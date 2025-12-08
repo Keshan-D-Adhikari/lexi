@@ -20,6 +20,14 @@ export interface ModelConfig {
   temperature: number;
 }
 
+interface GeminiConfig {
+  name: string;
+  model: string;
+  timeout: number;
+  maxOutputTokens: number;
+  temperature: number;
+}
+
 export interface ModelAttempt {
   model: string;
   success: boolean;
@@ -27,8 +35,8 @@ export interface ModelAttempt {
   responseTime?: number;
 }
 
-// Model configuration with fallback chain - optimized for speed
-const MODEL_CONFIGS: ModelConfig[] = [
+// Model configuration with fallback chain - optimized for speed (OpenRouter)
+const OPENROUTER_MODEL_CONFIGS: ModelConfig[] = [
   {
     name: 'Llama 3.3 70B',
     model: 'meta-llama/llama-3.3-70b-instruct:free',
@@ -66,8 +74,17 @@ const MODEL_CONFIGS: ModelConfig[] = [
   }
 ];
 
+const GEMINI_DIRECT_CONFIG: GeminiConfig = {
+  name: 'Gemini 1.5 Pro (Direct)',
+  model: 'gemini-1.5-pro-latest',
+  timeout: 8000,
+  maxOutputTokens: 250,
+  temperature: 0.7
+};
+
 export class AIService {
-  private apiKey: string | null = null;
+  private openRouterApiKey: string | null = null;
+  private geminiApiKey: string | null = null;
   private isInitialized = false;
   private conversationHistory: ConversationMessage[] = [];
   private modelAttempts: ModelAttempt[] = [];
@@ -77,30 +94,45 @@ export class AIService {
   }
 
   private initializeApiKey() {
-    // Check for environment variable first
-    const envKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-    if (envKey) {
-      this.apiKey = envKey;
-      this.isInitialized = true;
-      return;
+    // Prefer environment variables and fall back to localStorage for development
+    const openRouterEnvKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    const geminiEnvKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+    if (openRouterEnvKey) {
+      this.openRouterApiKey = openRouterEnvKey;
+    } else {
+      const storedOpenRouterKey = localStorage.getItem('openrouter_api_key');
+      if (storedOpenRouterKey) {
+        this.openRouterApiKey = storedOpenRouterKey;
+      }
     }
 
-    // Fallback to localStorage for development
-    const storedKey = localStorage.getItem('openrouter_api_key');
-    if (storedKey) {
-      this.apiKey = storedKey;
-      this.isInitialized = true;
+    if (geminiEnvKey) {
+      this.geminiApiKey = geminiEnvKey;
+    } else {
+      const storedGeminiKey = localStorage.getItem('gemini_api_key');
+      if (storedGeminiKey) {
+        this.geminiApiKey = storedGeminiKey;
+      }
     }
+
+    this.isInitialized = !!(this.openRouterApiKey || this.geminiApiKey);
   }
 
   public setApiKey(apiKey: string) {
-    this.apiKey = apiKey;
+    this.openRouterApiKey = apiKey;
     this.isInitialized = true;
     localStorage.setItem('openrouter_api_key', apiKey);
   }
 
+  public setGeminiApiKey(apiKey: string) {
+    this.geminiApiKey = apiKey;
+    this.isInitialized = true;
+    localStorage.setItem('gemini_api_key', apiKey);
+  }
+
   public isReady(): boolean {
-    return this.isInitialized && this.apiKey !== null;
+    return this.isInitialized && (this.openRouterApiKey !== null || this.geminiApiKey !== null);
   }
 
   public clearConversationHistory() {
@@ -123,9 +155,9 @@ export class AIService {
   async askLexi(_prompt: string): Promise<AIResponse> {
     if (!this.isReady()) {
       return {
-        content: "I'm having trouble thinking right now—could you repeat that? (API key not configured)",
+        content: "I'm having trouble thinking right now—could you repeat that? (AI keys not configured)",
         success: false,
-        error: 'API key not configured'
+        error: 'AI keys not configured'
       };
     }
 
@@ -141,26 +173,24 @@ export class AIService {
       ...this.conversationHistory.slice(-10) // Keep last 10 messages for context
     ];
 
-    // Try each model sequentially
-    for (const modelConfig of MODEL_CONFIGS) {
+    // Try direct Gemini first if available
+    if (this.geminiApiKey) {
       const attemptStartTime = Date.now();
-      
+
       try {
-        console.log(`🧠 Trying model: ${modelConfig.name} (${modelConfig.model})`);
-        
-        const response = await this.callModelWithTimeout(
-          modelConfig,
+        console.log(`🧠 Trying direct model: ${GEMINI_DIRECT_CONFIG.name} (${GEMINI_DIRECT_CONFIG.model})`);
+
+        const response = await this.callGeminiDirect(
           messages,
-          attemptStartTime
+          GEMINI_DIRECT_CONFIG
         );
 
         if (response.success) {
           const totalTime = Date.now() - startTime;
-          console.log(`✅ Success with ${modelConfig.name} in ${totalTime}ms`);
-          
-          // Log successful attempt
+          console.log(`✅ Success with ${GEMINI_DIRECT_CONFIG.name} in ${totalTime}ms`);
+
           this.modelAttempts.push({
-            model: modelConfig.name,
+            model: GEMINI_DIRECT_CONFIG.name,
             success: true,
             responseTime: Date.now() - attemptStartTime
           });
@@ -168,32 +198,88 @@ export class AIService {
           return {
             content: response.content,
             success: true,
-            modelUsed: modelConfig.name,
+            modelUsed: GEMINI_DIRECT_CONFIG.name,
             responseTime: totalTime
           };
         } else {
-          // Log failed attempt
           this.modelAttempts.push({
-            model: modelConfig.name,
+            model: GEMINI_DIRECT_CONFIG.name,
             success: false,
             error: response.error,
             responseTime: Date.now() - attemptStartTime
           });
-          
-          console.warn(`❌ ${modelConfig.name} failed:`, response.error);
+
+          console.warn(`❌ ${GEMINI_DIRECT_CONFIG.name} failed:`, response.error);
         }
       } catch (error) {
         const attemptTime = Date.now() - attemptStartTime;
-        
-        // Log failed attempt
+
         this.modelAttempts.push({
-          model: modelConfig.name,
+          model: GEMINI_DIRECT_CONFIG.name,
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
           responseTime: attemptTime
         });
+
+        console.error(`❌ ${GEMINI_DIRECT_CONFIG.name} error:`, error);
+      }
+    }
+
+    // Try each model sequentially
+    if (this.openRouterApiKey) {
+      for (const modelConfig of OPENROUTER_MODEL_CONFIGS) {
+        const attemptStartTime = Date.now();
         
-        console.error(`❌ ${modelConfig.name} error:`, error);
+        try {
+          console.log(`🧠 Trying model: ${modelConfig.name} (${modelConfig.model})`);
+          
+          const response = await this.callModelWithTimeout(
+            modelConfig,
+            messages,
+            attemptStartTime
+          );
+
+          if (response.success) {
+            const totalTime = Date.now() - startTime;
+            console.log(`✅ Success with ${modelConfig.name} in ${totalTime}ms`);
+            
+            // Log successful attempt
+            this.modelAttempts.push({
+              model: modelConfig.name,
+              success: true,
+              responseTime: Date.now() - attemptStartTime
+            });
+
+            return {
+              content: response.content,
+              success: true,
+              modelUsed: modelConfig.name,
+              responseTime: totalTime
+            };
+          } else {
+            // Log failed attempt
+            this.modelAttempts.push({
+              model: modelConfig.name,
+              success: false,
+              error: response.error,
+              responseTime: Date.now() - attemptStartTime
+            });
+            
+            console.warn(`❌ ${modelConfig.name} failed:`, response.error);
+          }
+        } catch (error) {
+          const attemptTime = Date.now() - attemptStartTime;
+          
+          // Log failed attempt
+          this.modelAttempts.push({
+            model: modelConfig.name,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            responseTime: attemptTime
+          });
+          
+          console.error(`❌ ${modelConfig.name} error:`, error);
+        }
       }
     }
 
@@ -215,6 +301,14 @@ export class AIService {
     messages: ConversationMessage[],
     _startTime: number
   ): Promise<AIResponse> {
+    if (!this.openRouterApiKey) {
+      return {
+        content: '',
+        success: false,
+        error: 'OpenRouter API key not configured'
+      };
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
@@ -224,7 +318,7 @@ export class AIService {
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.openRouterApiKey}`,
           'HTTP-Referer': window.location.origin,
           'X-Title': 'Talking Lexi',
           'Content-Type': 'application/json'
@@ -286,6 +380,104 @@ export class AIService {
         };
       }
       
+      throw error;
+    }
+  }
+
+  private async callGeminiDirect(
+    messages: ConversationMessage[],
+    config: GeminiConfig
+  ): Promise<AIResponse> {
+    if (!this.geminiApiKey) {
+      return {
+        content: '',
+        success: false,
+        error: 'Gemini API key not configured'
+      };
+    }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, config.timeout);
+
+    try {
+      const systemMessage = messages.find((message) => message.role === 'system');
+      const conversationMessages = messages.filter((message) => message.role !== 'system');
+
+      const contents = conversationMessages.map((message) => ({
+        role: message.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: message.content }]
+      }));
+
+      const requestBody: Record<string, any> = {
+        contents,
+        generationConfig: {
+          maxOutputTokens: config.maxOutputTokens,
+          temperature: config.temperature
+        }
+      };
+
+      if (systemMessage) {
+        requestBody.system_instruction = {
+          parts: [{ text: systemMessage.content }]
+        };
+      }
+
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${this.geminiApiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return {
+          content: '',
+          success: false,
+          error: `HTTP ${response.status}: ${response.statusText} - ${errorText}`
+        };
+      }
+
+      const data = await response.json();
+      const candidate = data.candidates?.[0];
+      const textParts = candidate?.content?.parts ?? [];
+      const aiResponse = textParts
+        .map((part: { text?: string }) => part.text ?? '')
+        .join('')
+        .trim();
+
+      if (!aiResponse) {
+        return {
+          content: '',
+          success: false,
+          error: 'Empty response from Gemini'
+        };
+      }
+
+      return {
+        content: aiResponse,
+        success: true
+      };
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === 'AbortError') {
+        return {
+          content: '',
+          success: false,
+          error: `Timeout after ${config.timeout}ms`
+        };
+      }
+
       throw error;
     }
   }

@@ -1,6 +1,7 @@
 export const ENV_CONFIG = {
   // AI Brain
   OPENROUTER_API_KEY: import.meta.env.VITE_OPENROUTER_API_KEY,
+  GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
   
   // Plugin APIs
   WEATHER_API_KEY: import.meta.env.VITE_WEATHER_API_KEY,
@@ -21,7 +22,8 @@ export const getEnabledPlugins = (): string[] => {
 
 export const getPluginStatus = () => {
   return {
-    brain: isPluginEnabled('OPENROUTER_API_KEY'),
+    brain: isPluginEnabled('OPENROUTER_API_KEY') || isPluginEnabled('GEMINI_API_KEY'),
+    gemini: isPluginEnabled('GEMINI_API_KEY'),
     weather: isPluginEnabled('WEATHER_API_KEY'),
     news: isPluginEnabled('NEWS_API_KEY'),
     search: isPluginEnabled('SERPER_API_KEY'),
