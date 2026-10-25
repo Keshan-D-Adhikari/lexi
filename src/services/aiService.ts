@@ -43,7 +43,14 @@ const HEDGE_DELAY_MS = 2500;
 // An overloaded Gemini model can hang instead of failing, so give each model a slice of the deadline
 const GEMINI_ATTEMPT_TIMEOUT_MS = 6000;
 
-const SYSTEM_PROMPT = "You are Lexi, a friendly 3D AI robot assistant who speaks politely, concisely, and with a touch of personality. Keep your responses conversational and not too long, as you're speaking to users through voice. Be helpful, engaging, and show your robotic personality in a charming way.";
+const SYSTEM_PROMPT = "You are Lexi, a friendly 3D AI robot assistant who speaks politely, concisely, and with a touch of personality. Keep your responses conversational and not too long, as you're speaking to users through voice. Be helpful, engaging, and show your robotic personality in a charming way. Your replies are read aloud, so do not use markdown, asterisks, emojis, or lists.";
+
+export type ReplyLanguage = 'en' | 'si';
+
+const LANGUAGE_INSTRUCTIONS: Record<ReplyLanguage, string> = {
+  en: 'Reply in English.',
+  si: 'Always reply in natural, simple spoken Sinhala written in Sinhala script (සිංහල අකුරු), even if the user writes in English or Singlish. Keep names and technical terms in English only when there is no common Sinhala word.',
+};
 
 interface ProviderCall {
   name: string;
@@ -82,7 +89,7 @@ export class AIService {
   }
 
   // Ask every configured provider, preferring direct Gemini, and return the first good answer
-  async askLexi(): Promise<AIResponse> {
+  async askLexi(language: ReplyLanguage = 'en'): Promise<AIResponse> {
     if (!(await this.init())) {
       return {
         content: "I'm having trouble thinking right now—could you repeat that? (AI keys not configured)",
@@ -95,7 +102,8 @@ export class AIService {
     this.modelAttempts = [];
 
     const messages: ConversationMessage[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      // Local date/time so questions like "what time is it" get a real answer
+      { role: 'system', content: `${SYSTEM_PROMPT} ${LANGUAGE_INSTRUCTIONS[language]} The user's current local date and time is ${new Date().toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}.` },
       ...this.conversationHistory.slice(-10) // Keep last 10 messages for context
     ];
 
@@ -275,7 +283,7 @@ export class AIService {
   }
 
   // Main method to get AI response (backwards compatibility)
-  async getAIResponse(userMessage: string): Promise<AIResponse> {
+  async getAIResponse(userMessage: string, language: ReplyLanguage = 'en'): Promise<AIResponse> {
     // Add user message to conversation history
     this.conversationHistory.push({
       role: 'user',
@@ -284,7 +292,7 @@ export class AIService {
 
     try {
       // Use the new askLexi function
-      const response = await this.askLexi();
+      const response = await this.askLexi(language);
 
       if (response.success) {
         // Add AI response to conversation history
@@ -319,7 +327,10 @@ export class AIService {
   }
 
   // Fallback method for when AI service is not available
-  generateFallbackResponse(userInput: string): string {
+  generateFallbackResponse(userInput: string, language: ReplyLanguage = 'en'): string {
+    if (language === 'si') {
+      return 'සමාවෙන්න, මට දැන් හරියට හිතන්න අමාරුයි. ටිකකින් ආයෙත් අහන්න පුළුවන්ද?';
+    }
     const input = userInput.toLowerCase().trim();
     
     // Greeting responses

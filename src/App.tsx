@@ -7,6 +7,7 @@ import { HolographicOverlay } from './components/ui/HolographicOverlay';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { ThemeToggle } from './components/ThemeToggle';
+import { LanguageProvider, useLanguage } from './contexts/LanguageContext';
 import { ConversationProvider, useConversation } from './contexts/ConversationContext';
 import { VoiceStateProvider } from './contexts/VoiceStateContext';
 import { VoiceControls } from './components/VoiceControls';
@@ -135,7 +136,8 @@ function AppContent() {
               <NavButton icon={Info} label="About" active={showAbout} isDark={isDark} onClick={() => setShowAbout(true)} />
             </nav>
 
-            <div className="shrink-0">
+            <div className="shrink-0 flex items-center gap-2">
+              <LanguageToggle isDark={isDark} />
               <ThemeToggle />
             </div>
           </div>
@@ -262,16 +264,45 @@ function NavButton({ icon: Icon, label, active = false, isDark, onClick }: {
   );
 }
 
+// Switches what Lexi listens for, replies in, and speaks: English <-> Sinhala
+function LanguageToggle({ isDark }: { isDark: boolean }) {
+  const { language, toggleLanguage } = useLanguage();
+  const next = language === 'en' ? 'Sinhala' : 'English';
+
+  return (
+    <button
+      onClick={toggleLanguage}
+      aria-label={`Switch to ${next}`}
+      title={`Switch to ${next}`}
+      className={`h-10 rounded-xl border px-1 flex items-center text-xs font-semibold ${isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-100/80'}`}
+    >
+      {(['en', 'si'] as const).map((code) => (
+        <span
+          key={code}
+          className={`px-2 py-1.5 rounded-lg transition-colors ${language === code
+            ? isDark ? 'bg-indigo-500/30 text-white' : 'bg-white text-indigo-700 shadow-sm'
+            : isDark ? 'text-slate-400' : 'text-slate-500'
+            }`}
+        >
+          {code === 'en' ? 'EN' : 'සිං'}
+        </span>
+      ))}
+    </button>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
-      <ConversationProvider>
-        <VoiceStateProvider>
-          <PluginProvider>
-            <AppContent />
-          </PluginProvider>
-        </VoiceStateProvider>
-      </ConversationProvider>
+      <LanguageProvider>
+        <ConversationProvider>
+          <VoiceStateProvider>
+            <PluginProvider>
+              <AppContent />
+            </PluginProvider>
+          </VoiceStateProvider>
+        </ConversationProvider>
+      </LanguageProvider>
     </ThemeProvider>
   );
 }

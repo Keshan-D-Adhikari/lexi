@@ -231,6 +231,16 @@ YOUTUBE_API_KEY=your_youtube_key_here
 - Click "Holographic" in the navigation to experience a holographic-style visualization
 - Features enhanced visual effects and particle systems
 
+### Sinhala Mode (සිංහල)
+
+Use the **EN / සිං** toggle in the header to talk with Lexi in Sinhala. The choice is remembered.
+
+- **Listening:** the mic recognizes Sinhala (`si-LK`). Voice input works in Google Chrome.
+- **Replies:** Lexi answers in Sinhala script, even if you type in English or Singlish.
+- **Voice:** Sinhala replies are spoken with Gemini text-to-speech (`gemini-3.8-flash-tts`,
+  falling back to `gemini-3.1-flash-tts-preview`), because Windows and browsers have no
+  built-in Sinhala voice. Needs `GEMINI_API_KEY`; if TTS is unavailable, the reply is still shown in chat.
+
 ### Browser Control (local only)
 
 Lexi can operate a real Chrome window for you. Start a request with "open", "go to", or

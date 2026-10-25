@@ -27,6 +27,9 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
 
   const recognitionRef = useRef<any>(null);
   const timeoutRef = useRef<number | null>(null);
+  // Latest language, applied on every start so switching EN/SI takes effect immediately
+  const languageRef = useRef(options.language ?? 'en-US');
+  languageRef.current = options.language ?? 'en-US';
 
   // Check if speech recognition is supported
   useEffect(() => {
@@ -163,6 +166,7 @@ export function useSpeechRecognition(options: SpeechRecognitionOptions = {}) {
         stopListening();
       }, 10000);
 
+      recognitionRef.current.lang = languageRef.current;
       recognitionRef.current.start();
     } catch (error) {
       setState(prev => ({

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { speechService, SpeechConfig } from '../services/speechService';
 import { useAudioAnalysis } from './useAudioAnalysis';
+import { speakWithGemini, cleanForSpeech } from '../services/geminiTts';
 
 export interface TextToSpeechState {
   isSpeaking: boolean;
@@ -13,6 +14,8 @@ export interface TextToSpeechState {
 export interface TextToSpeechOptions {
   useDeepgram?: boolean;
   config?: SpeechConfig;
+  // 'si' speaks with Gemini TTS: there is no built-in Sinhala browser voice
+  language?: 'en' | 'si';
   onStart?: () => void;
   onEnd?: () => void;
   onError?: (error: string) => void;
@@ -39,6 +42,8 @@ export function useTextToSpeech(options: TextToSpeechOptions = {}) {
   const speak = useCallback(async (text: string, customOptions?: TextToSpeechOptions) => {
     const finalOptions = { ...options, ...customOptions };
     const useDeepgram = finalOptions.useDeepgram ?? state.useDeepgram;
+    const isSinhala = finalOptions.language === 'si';
+    const spokenText = cleanForSpeech(text);
 
     // Clear any previous error
     setState(prev => ({ ...prev, error: null }));
@@ -56,9 +61,11 @@ export function useTextToSpeech(options: TextToSpeechOptions = {}) {
         finalOptions.onStart();
       }
 
-      if (useDeepgram && speechService.isReady()) {
-        // Use Deepgram TTS
-        const audio = await speechService.speakWithDeepgram(text, finalOptions.config);
+      if (isSinhala || (useDeepgram && speechService.isReady())) {
+        // Audio-file voices: Gemini TTS for Sinhala, Deepgram for English when configured
+        const audio = isSinhala
+          ? await speakWithGemini(spokenText)
+          : await speechService.speakWithDeepgram(spokenText, finalOptions.config);
         audioRef.current = audio;
 
         audio.onended = () => {
@@ -97,7 +104,7 @@ export function useTextToSpeech(options: TextToSpeechOptions = {}) {
         audioAnalysis.startAnalysis(audio);
       } else {
         // Use Web Speech API
-        await speechService.speakWithWebAPI(text);
+        await speechService.speakWithWebAPI(spokenText);
         
         setState(prev => ({
           ...prev,
@@ -141,11 +148,11 @@ export function useTextToSpeech(options: TextToSpeechOptions = {}) {
         finalOptions.onError(errorMessage);
       }
 
-      // If Deepgram fails, try Web Speech API as fallback
-      if (useDeepgram) {
+      // If Deepgram fails, try Web Speech API as fallback (an English voice can't read Sinhala, so not for 'si')
+      if (useDeepgram && !isSinhala) {
         console.warn('Deepgram TTS failed, falling back to Web Speech API');
         try {
-          await speechService.speakWithWebAPI(text);
+          await speechService.speakWithWebAPI(spokenText);
           setState(prev => ({
             ...prev,
             isSpeaking: false,

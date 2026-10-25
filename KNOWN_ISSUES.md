@@ -57,4 +57,7 @@ and no CI pipeline. Regressions in intent rules or the AI fallback logic would g
 - **`.gitignore` ignores `public/`:** new assets added there will not be committed.
 - **Holographic mode hides the robot:** switching to Holographic removes the 3D robot entirely.
 - **English-only intents:** commands in Sinhala or Singlish (e.g. "Colombo weather eka mokakda")
-  do not reach plugins; they go to the AI chat instead.
+  do not reach plugins or browser control; they go to the AI chat instead.
+- **Sinhala mode limits:** Sinhala voice uses Gemini TTS, which has free-tier daily limits and
+  adds a few seconds before Lexi starts speaking. Sinhala speech recognition was only checked
+  for configuration (`si-LK`), not with a real microphone, and works only in Chrome.

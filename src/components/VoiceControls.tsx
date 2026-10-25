@@ -8,6 +8,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useVoiceState } from '../contexts/VoiceStateContext';
 import { usePluginContextSafe } from '../contexts/PluginContext';
 import { useConversation } from '../contexts/ConversationContext';
+import { useLanguage } from '../contexts/LanguageContext';
 import { getServiceStatus } from '../utils/env';
 import { BROWSER_PROGRESS_EVENT, stopBrowserTask, type BrowserTaskState } from '../core/plugins/browser';
 
@@ -31,6 +32,10 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
     const textInputRef = useRef<HTMLInputElement>(null);
     const { pendingPrompt, consumePrompt } = useConversation();
     const isDark = theme === 'dark';
+    const { language } = useLanguage();
+    // Speech-recognition callbacks are created once, so read the language through a ref
+    const languageRef = useRef(language);
+    languageRef.current = language;
     const [browserTask, setBrowserTask] = useState<BrowserTaskState | null>(null);
 
     // Live progress of a browser task started by the browser plugin
@@ -41,6 +46,7 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
     }, []);
 
     const speechRecognition = useSpeechRecognition({
+        language: language === 'si' ? 'si-LK' : 'en-US',
         continuous: false,
         interimResults: true,
         onResult: (transcript, isFinal) => {
@@ -144,7 +150,7 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
             // Fall back to AI if no plugin was used
             if (!usedPlugin) {
                 console.log('🧠 Calling AI service...');
-                const aiResponse: AIResponse = await aiService.getAIResponse(userText);
+                const aiResponse: AIResponse = await aiService.getAIResponse(userText, languageRef.current);
                 console.log('✅ AI response received:', aiResponse);
 
                 // Update model information
@@ -161,7 +167,7 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
                 // Use AI response or fallback
                 response = aiResponse.success
                     ? aiResponse.content
-                    : aiService.generateFallbackResponse(userText);
+                    : aiService.generateFallbackResponse(userText, languageRef.current);
             }
 
             // Add response to conversation
@@ -179,7 +185,7 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
 
             // Speak the response
             console.log('Attempting to speak response...');
-            await textToSpeech.speak(response);
+            await textToSpeech.speak(response, { language: languageRef.current });
             console.log('Speech completed');
 
         } catch (error) {
@@ -378,7 +384,9 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
                         ref={textInputRef}
                         value={textInput}
                         onChange={(e) => setTextInput(e.target.value)}
-                        placeholder={speechRecognition.isSupported ? 'Type a message or tap the mic' : 'Type a message (voice not supported here)'}
+                        placeholder={language === 'si'
+                            ? 'සිංහලෙන් ලියන්න, නැත්නම් mic එක ඔබන්න'
+                            : speechRecognition.isSupported ? 'Type a message or tap the mic' : 'Type a message (voice not supported here)'}
                         autoComplete="off"
                         className={`flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400 ${isDark
                             ? 'bg-slate-800/80 border-white/10 text-slate-100 placeholder-slate-400'
