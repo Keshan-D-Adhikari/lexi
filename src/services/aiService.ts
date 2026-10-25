@@ -1,5 +1,5 @@
-// AI Service with Multi-Model Fallback for OpenRouter Integration
-import { getCachedServiceStatus, getServiceStatus, type ServiceStatus } from '../utils/env';
+// AI Service: direct Gemini and OpenRouter, raced with a hedge and an overall deadline
+import { getCachedServiceStatus, getServiceStatus, readProxyError, type ServiceStatus } from '../utils/env';
 
 export interface AIResponse {
   content: string;
@@ -14,22 +14,6 @@ export interface ConversationMessage {
   content: string;
 }
 
-export interface ModelConfig {
-  name: string;
-  model: string;
-  timeout: number;
-  maxTokens: number;
-  temperature: number;
-}
-
-interface GeminiConfig {
-  name: string;
-  model: string;
-  timeout: number;
-  maxOutputTokens: number;
-  temperature: number;
-}
-
 export interface ModelAttempt {
   model: string;
   success: boolean;
@@ -37,52 +21,31 @@ export interface ModelAttempt {
   responseTime?: number;
 }
 
-// Model configuration with fallback chain - optimized for speed (OpenRouter)
-const OPENROUTER_MODEL_CONFIGS: ModelConfig[] = [
-  {
-    name: 'Llama 3.3 70B',
-    model: 'meta-llama/llama-3.3-70b-instruct:free',
-    timeout: 8000,  // Reduced from 15000ms - this model works with your privacy settings
-    maxTokens: 150,
-    temperature: 0.7
-  },
-  {
-    name: 'Qwen 3 14B',
-    model: 'qwen/qwen3-14b:free',
-    timeout: 8000,  // Reduced from 15000ms
-    maxTokens: 150,
-    temperature: 0.7
-  },
-  {
-    name: 'DeepSeek V3.1',
-    model: 'deepseek/deepseek-chat-v3.1:free',
-    timeout: 3000,  // Reduced from 15000ms - fails due to privacy settings
-    maxTokens: 150,
-    temperature: 0.7
-  },
-  {
-    name: 'Mistral Small',
-    model: 'mistralai/mistral-small-3.2-24b-instruct:free',
-    timeout: 3000,  // Reduced from 15000ms - fails due to privacy settings
-    maxTokens: 150,
-    temperature: 0.7
-  },
-  {
-    name: 'Gemini 2.0 Flash',
-    model: 'google/gemini-2.0-flash-exp:free',
-    timeout: 3000,  // Reduced from 15000ms - fails due to privacy settings
-    maxTokens: 150,
-    temperature: 0.7
-  }
+// Defaults when the server sets no OPENROUTER_MODELS / GEMINI_MODEL.
+// OpenRouter tries these in order inside a single request ("models" fallback routing),
+// so a retired model only costs a quick server-side retry instead of a client timeout.
+// "openrouter/free" routes to whichever free model is currently available.
+const DEFAULT_OPENROUTER_MODELS = [
+  'openrouter/free',
+  'google/gemma-4-31b-it:free',
+  'nvidia/nemotron-3-super-120b-a12b:free',
 ];
+// "-latest" alias keeps pointing at a current Flash model as Google retires versions
+const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
 
-const GEMINI_DIRECT_CONFIG: GeminiConfig = {
-  name: 'Gemini 1.5 Pro (Direct)',
-  model: 'gemini-1.5-pro-latest',
-  timeout: 8000,
-  maxOutputTokens: 250,
-  temperature: 0.7
-};
+const MAX_OUTPUT_TOKENS = 250;
+const TEMPERATURE = 0.7;
+// Whole answer must arrive within this, no matter how many providers are tried
+const TOTAL_DEADLINE_MS = 15000;
+// When both providers are configured, start OpenRouter if Gemini has not answered by then
+const HEDGE_DELAY_MS = 2500;
+
+const SYSTEM_PROMPT = "You are Lexi, a friendly 3D AI robot assistant who speaks politely, concisely, and with a touch of personality. Keep your responses conversational and not too long, as you're speaking to users through voice. Be helpful, engaging, and show your robotic personality in a charming way.";
+
+interface ProviderCall {
+  name: string;
+  run: (signal: AbortSignal) => Promise<{ content: string; model: string }>;
+}
 
 export class AIService {
   private status: ServiceStatus = getCachedServiceStatus();
@@ -115,8 +78,8 @@ export class AIService {
     this.modelAttempts = [];
   }
 
-  // Core askLexi function with multi-model fallback
-  async askLexi(_prompt: string): Promise<AIResponse> {
+  // Ask every configured provider, preferring direct Gemini, and return the first good answer
+  async askLexi(): Promise<AIResponse> {
     if (!(await this.init())) {
       return {
         content: "I'm having trouble thinking right now—could you repeat that? (AI keys not configured)",
@@ -128,305 +91,158 @@ export class AIService {
     const startTime = Date.now();
     this.modelAttempts = [];
 
-    // Prepare messages for API call
     const messages: ConversationMessage[] = [
-      {
-        role: 'system',
-        content: "You are Lexi, a friendly 3D AI robot assistant who speaks politely, concisely, and with a touch of personality. Keep your responses conversational and not too long, as you're speaking to users through voice. Be helpful, engaging, and show your robotic personality in a charming way."
-      },
+      { role: 'system', content: SYSTEM_PROMPT },
       ...this.conversationHistory.slice(-10) // Keep last 10 messages for context
     ];
 
-    // Try direct Gemini first if available
+    const providers: ProviderCall[] = [];
     if (this.status.gemini) {
-      const attemptStartTime = Date.now();
-
-      try {
-        console.log(`🧠 Trying direct model: ${GEMINI_DIRECT_CONFIG.name} (${GEMINI_DIRECT_CONFIG.model})`);
-
-        const response = await this.callGeminiDirect(
-          messages,
-          GEMINI_DIRECT_CONFIG
-        );
-
-        if (response.success) {
-          const totalTime = Date.now() - startTime;
-          console.log(`✅ Success with ${GEMINI_DIRECT_CONFIG.name} in ${totalTime}ms`);
-
-          this.modelAttempts.push({
-            model: GEMINI_DIRECT_CONFIG.name,
-            success: true,
-            responseTime: Date.now() - attemptStartTime
-          });
-
-          return {
-            content: response.content,
-            success: true,
-            modelUsed: GEMINI_DIRECT_CONFIG.name,
-            responseTime: totalTime
-          };
-        } else {
-          this.modelAttempts.push({
-            model: GEMINI_DIRECT_CONFIG.name,
-            success: false,
-            error: response.error,
-            responseTime: Date.now() - attemptStartTime
-          });
-
-          console.warn(`❌ ${GEMINI_DIRECT_CONFIG.name} failed:`, response.error);
-        }
-      } catch (error) {
-        const attemptTime = Date.now() - attemptStartTime;
-
-        this.modelAttempts.push({
-          model: GEMINI_DIRECT_CONFIG.name,
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          responseTime: attemptTime
-        });
-
-        console.error(`❌ ${GEMINI_DIRECT_CONFIG.name} error:`, error);
-      }
+      const model = this.status.models?.gemini || DEFAULT_GEMINI_MODEL;
+      providers.push({ name: `Gemini (${model})`, run: (signal) => this.callGemini(messages, model, signal) });
     }
-
-    // Try each model sequentially
     if (this.status.openrouter) {
-      for (const modelConfig of OPENROUTER_MODEL_CONFIGS) {
-        const attemptStartTime = Date.now();
-        
-        try {
-          console.log(`🧠 Trying model: ${modelConfig.name} (${modelConfig.model})`);
-          
-          const response = await this.callModelWithTimeout(
-            modelConfig,
-            messages,
-            attemptStartTime
-          );
-
-          if (response.success) {
-            const totalTime = Date.now() - startTime;
-            console.log(`✅ Success with ${modelConfig.name} in ${totalTime}ms`);
-            
-            // Log successful attempt
-            this.modelAttempts.push({
-              model: modelConfig.name,
-              success: true,
-              responseTime: Date.now() - attemptStartTime
-            });
-
-            return {
-              content: response.content,
-              success: true,
-              modelUsed: modelConfig.name,
-              responseTime: totalTime
-            };
-          } else {
-            // Log failed attempt
-            this.modelAttempts.push({
-              model: modelConfig.name,
-              success: false,
-              error: response.error,
-              responseTime: Date.now() - attemptStartTime
-            });
-            
-            console.warn(`❌ ${modelConfig.name} failed:`, response.error);
-          }
-        } catch (error) {
-          const attemptTime = Date.now() - attemptStartTime;
-          
-          // Log failed attempt
-          this.modelAttempts.push({
-            model: modelConfig.name,
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error',
-            responseTime: attemptTime
-          });
-          
-          console.error(`❌ ${modelConfig.name} error:`, error);
-        }
-      }
+      const models = this.status.models?.openrouter?.length ? this.status.models.openrouter : DEFAULT_OPENROUTER_MODELS;
+      providers.push({ name: 'OpenRouter', run: (signal) => this.callOpenRouter(messages, models, signal) });
     }
 
-    // All models failed
+    const winner = await this.race(providers);
     const totalTime = Date.now() - startTime;
-    console.error(`❌ All models failed after ${totalTime}ms`);
-    
+
+    if (winner) {
+      console.log(`✅ Answer from ${winner.model} in ${totalTime}ms`);
+      return { content: winner.content, success: true, modelUsed: winner.model, responseTime: totalTime };
+    }
+
+    console.error(`❌ All AI providers failed after ${totalTime}ms`, this.modelAttempts);
     return {
       content: "I'm having trouble thinking right now—could you repeat that?",
       success: false,
-      error: 'All AI models failed',
+      error: 'All AI providers failed',
       responseTime: totalTime
     };
   }
 
-  // Call a specific model with timeout
-  private async callModelWithTimeout(
-    modelConfig: ModelConfig,
-    messages: ConversationMessage[],
-    _startTime: number
-  ): Promise<AIResponse> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, modelConfig.timeout);
+  // Starts providers in order: the next one starts when the previous fails or after HEDGE_DELAY_MS.
+  // The first success wins and the rest are aborted; everything is cut off at TOTAL_DEADLINE_MS.
+  private race(providers: ProviderCall[]): Promise<{ content: string; model: string } | null> {
+    return new Promise((resolve) => {
+      const controllers: AbortController[] = [];
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      let started = 0;
+      let finished = 0;
+      let done = false;
 
-    try {
-      // Server-side proxy adds the OpenRouter key
-      const response = await fetch('/api/openrouter/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: modelConfig.model,
-          messages: messages,
-          max_tokens: modelConfig.maxTokens,
-          temperature: modelConfig.temperature,
-          stream: false
-        }),
-        signal: controller.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          content: '',
-          success: false,
-          error: `HTTP ${response.status}: ${response.statusText} - ${errorText}`
-        };
-      }
-
-      const data = await response.json();
-      
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        return {
-          content: '',
-          success: false,
-          error: 'Unexpected API response format'
-        };
-      }
-
-      const aiResponse = data.choices[0].message.content.trim();
-      
-      if (!aiResponse) {
-        return {
-          content: '',
-          success: false,
-          error: 'Empty response from AI'
-        };
-      }
-
-      return {
-        content: aiResponse,
-        success: true
+      const settle = (result: { content: string; model: string } | null) => {
+        if (done) return;
+        done = true;
+        timers.forEach(clearTimeout);
+        controllers.forEach((controller) => controller.abort());
+        resolve(result);
       };
 
-    } catch (error) {
-      clearTimeout(timeoutId);
-      
-      if (error instanceof Error && error.name === 'AbortError') {
-        return {
-          content: '',
-          success: false,
-          error: `Timeout after ${modelConfig.timeout}ms`
-        };
-      }
-      
-      throw error;
-    }
+      const startNext = () => {
+        if (done || started >= providers.length) return;
+        const provider = providers[started++];
+        const controller = new AbortController();
+        controllers.push(controller);
+        const attemptStart = Date.now();
+        console.log(`🧠 Asking ${provider.name}`);
+
+        provider.run(controller.signal).then(
+          (result) => {
+            this.modelAttempts.push({ model: result.model, success: true, responseTime: Date.now() - attemptStart });
+            settle(result);
+          },
+          (error: unknown) => {
+            if (done) return;
+            const message = error instanceof Error && error.name === 'AbortError'
+              ? 'Timed out'
+              : error instanceof Error ? error.message : String(error);
+            this.modelAttempts.push({ model: provider.name, success: false, error: message, responseTime: Date.now() - attemptStart });
+            console.warn(`❌ ${provider.name} failed:`, message);
+            finished++;
+            if (finished === providers.length) settle(null);
+            else startNext();
+          }
+        );
+
+        if (started < providers.length) timers.push(setTimeout(startNext, HEDGE_DELAY_MS));
+      };
+
+      timers.push(setTimeout(() => settle(null), TOTAL_DEADLINE_MS));
+      if (providers.length === 0) settle(null);
+      else startNext();
+    });
   }
 
-  private async callGeminiDirect(
+  private async callOpenRouter(
     messages: ConversationMessage[],
-    config: GeminiConfig
-  ): Promise<AIResponse> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, config.timeout);
+    models: string[],
+    signal: AbortSignal
+  ): Promise<{ content: string; model: string }> {
+    // Server-side proxy adds the OpenRouter key
+    const response = await fetch('/api/openrouter/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        models,
+        messages,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        temperature: TEMPERATURE,
+        stream: false
+      }),
+      signal
+    });
 
-    try {
-      const systemMessage = messages.find((message) => message.role === 'system');
-      const conversationMessages = messages.filter((message) => message.role !== 'system');
+    if (!response.ok) {
+      throw new Error(`OpenRouter ${await readProxyError(response)}`);
+    }
 
-      const contents = conversationMessages.map((message) => ({
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content?.trim();
+    if (!content) {
+      throw new Error(data.error?.message ?? 'Empty response from OpenRouter');
+    }
+    return { content, model: data.model ?? 'OpenRouter' };
+  }
+
+  private async callGemini(
+    messages: ConversationMessage[],
+    model: string,
+    signal: AbortSignal
+  ): Promise<{ content: string; model: string }> {
+    const systemMessage = messages.find((message) => message.role === 'system');
+    const contents = messages
+      .filter((message) => message.role !== 'system')
+      .map((message) => ({
         role: message.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: message.content }]
       }));
 
-      const requestBody: Record<string, any> = {
+    // Server-side proxy adds the Gemini key as a header, never in the URL
+    const response = await fetch(`/api/gemini/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         contents,
-        generationConfig: {
-          maxOutputTokens: config.maxOutputTokens,
-          temperature: config.temperature
-        }
-      };
+        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: TEMPERATURE },
+        ...(systemMessage && { system_instruction: { parts: [{ text: systemMessage.content }] } })
+      }),
+      signal
+    });
 
-      if (systemMessage) {
-        requestBody.system_instruction = {
-          parts: [{ text: systemMessage.content }]
-        };
-      }
-
-      const response = await fetch(
-        // Server-side proxy adds the Gemini key as a header, never in the URL
-        `/api/gemini/models/${config.model}:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(requestBody),
-          signal: controller.signal
-        }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          content: '',
-          success: false,
-          error: `HTTP ${response.status}: ${response.statusText} - ${errorText}`
-        };
-      }
-
-      const data = await response.json();
-      const candidate = data.candidates?.[0];
-      const textParts = candidate?.content?.parts ?? [];
-      const aiResponse = textParts
-        .map((part: { text?: string }) => part.text ?? '')
-        .join('')
-        .trim();
-
-      if (!aiResponse) {
-        return {
-          content: '',
-          success: false,
-          error: 'Empty response from Gemini'
-        };
-      }
-
-      return {
-        content: aiResponse,
-        success: true
-      };
-    } catch (error) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof Error && error.name === 'AbortError') {
-        return {
-          content: '',
-          success: false,
-          error: `Timeout after ${config.timeout}ms`
-        };
-      }
-
-      throw error;
+    if (!response.ok) {
+      throw new Error(`Gemini ${await readProxyError(response)}`);
     }
+
+    const data = await response.json();
+    const parts: { text?: string }[] = data.candidates?.[0]?.content?.parts ?? [];
+    const content = parts.map((part) => part.text ?? '').join('').trim();
+    if (!content) {
+      throw new Error('Empty response from Gemini');
+    }
+    return { content, model: `Gemini (${model})` };
   }
 
   // Main method to get AI response (backwards compatibility)
@@ -439,7 +255,7 @@ export class AIService {
 
     try {
       // Use the new askLexi function
-      const response = await this.askLexi(userMessage);
+      const response = await this.askLexi();
 
       if (response.success) {
         // Add AI response to conversation history

@@ -93,8 +93,21 @@ const hasKey = (env: ServerEnv, service: string) => {
   return !!value && !value.startsWith('your_');
 };
 
+// Optional model overrides, so retired models can be swapped without a rebuild
+function getModelConfig(env: ServerEnv) {
+  const openrouter = (env.OPENROUTER_MODELS ?? '')
+    .split(',')
+    .map((model) => model.trim())
+    .filter(Boolean);
+  return {
+    openrouter: openrouter.length ? openrouter : null,
+    gemini: env.GEMINI_MODEL?.trim() || null,
+  };
+}
+
 export function getServiceStatus(env: ServerEnv) {
   return {
+    models: getModelConfig(env),
     brain: hasKey(env, 'openrouter') || hasKey(env, 'gemini'),
     openrouter: hasKey(env, 'openrouter'),
     gemini: hasKey(env, 'gemini'),

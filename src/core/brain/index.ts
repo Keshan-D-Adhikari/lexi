@@ -45,23 +45,22 @@ export class LexiBrain {
         };
       }
 
-      // Route to appropriate plugin
-      const plugin = this.plugins[intent.plugin as keyof typeof this.plugins];
-      if (!plugin) {
-        return {
-          pluginUsed: null,
-          result: {
-            success: false,
-            type: 'general',
-            summary: 'I don\'t have that capability yet.',
-          },
-          shouldSpeak: true,
-          shouldShowCard: false,
-        };
+      // Route to the matching plugin (the switch keeps each plugin's parameters typed)
+      let result: PluginResult;
+      switch (intent.plugin) {
+        case 'weather':
+          result = await this.plugins.weather.execute(intent.parameters);
+          break;
+        case 'news':
+          result = await this.plugins.news.execute(intent.parameters);
+          break;
+        case 'search':
+          result = await this.plugins.search.execute(intent.parameters);
+          break;
+        case 'youtube':
+          result = await this.plugins.youtube.execute(intent.parameters);
+          break;
       }
-
-      // Execute plugin
-      const result = await plugin.execute(intent.parameters);
       
       return {
         pluginUsed: intent.plugin,

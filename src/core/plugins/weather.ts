@@ -11,7 +11,7 @@ interface WeatherData {
 }
 
 export const weatherPlugin = {
-  async execute(parameters: { location: string }): Promise<PluginResult> {
+  async execute(parameters: { location: string | null }): Promise<PluginResult> {
     try {
       if (!(await getServiceStatus()).weather) {
         return {
@@ -21,7 +21,15 @@ export const weatherPlugin = {
         };
       }
 
-      const location = parameters.location || 'current location';
+      const location = parameters.location?.trim();
+      if (!location) {
+        return {
+          success: false,
+          type: 'weather',
+          summary: 'Which city should I check? Try "weather in Colombo".',
+        };
+      }
+
       const weatherData = await this.fetchWeatherData(location);
       
       if (!weatherData) {

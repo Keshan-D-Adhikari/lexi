@@ -1,6 +1,8 @@
 // API keys live on the server (see server/apiProxy.ts). The browser only learns
 // which services are configured, never the keys themselves.
 export interface ServiceStatus {
+  // Server-side model overrides (null = use the client defaults)
+  models?: { openrouter: string[] | null; gemini: string | null };
   brain: boolean;
   openrouter: boolean;
   gemini: boolean;
