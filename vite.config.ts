@@ -1,6 +1,9 @@
 import { defineConfig, loadEnv, type Connect, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import { handleApiRequest, type ServerEnv } from './server/apiProxy';
+import { handleBrowserRequest } from './server/browserRoutes';
+
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 // Serves /api/* from the same handler the production serverless function uses,
 // so API keys stay on the server in development too.
@@ -12,11 +15,24 @@ function apiProxy(env: ServerEnv): Plugin {
       for await (const chunk of req) chunks.push(chunk as Buffer);
       const body = chunks.length ? Buffer.concat(chunks) : undefined;
 
+      const headers = new Headers();
+      for (const name of ['origin', 'x-lexi-client', 'content-type']) {
+        const value = req.headers[name];
+        if (typeof value === 'string') headers.set(name, value);
+      }
       const request = new Request(new URL(req.url, `http://${req.headers.host ?? 'localhost'}`), {
         method: req.method,
+        headers,
         body: req.method === 'GET' || req.method === 'HEAD' ? undefined : body,
       });
-      const response = await handleApiRequest(request, env);
+
+      // Browser control drives a real browser on this machine: local requests only
+      const isLocal = LOOPBACK.has(req.socket.remoteAddress ?? '');
+      const response = req.url.startsWith('/api/browser/')
+        ? isLocal
+          ? await handleBrowserRequest(request, env)
+          : new Response(JSON.stringify({ error: 'Browser control is only available locally' }), { status: 403 })
+        : await handleApiRequest(request, env);
       if (!response) return next();
 
       res.statusCode = response.status;
@@ -51,6 +67,10 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), apiProxy(env)],
+    server: {
+      // Never watch a browser profile, even if BROWSER_PROFILE_DIR points inside the project
+      watch: { ignored: ['**/.lexi-browser-profile/**', '**/browser-profile/**'] },
+    },
     optimizeDeps: {
       exclude: ['lucide-react'],
     },

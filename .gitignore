@@ -104,3 +104,5 @@ temp/
 *.njsproj
 *.sln
 *.sw?
+# Lexi browser agent profile (cookies, logins)
+.lexi-browser-profile/

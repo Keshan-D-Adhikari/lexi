@@ -231,6 +231,27 @@ YOUTUBE_API_KEY=your_youtube_key_here
 - Click "Holographic" in the navigation to experience a holographic-style visualization
 - Features enhanced visual effects and particle systems
 
+### Browser Control (local only)
+
+Lexi can operate a real Chrome window for you. Start a request with "open", "go to", or
+"visit", or mention "in the browser":
+
+- "Open YouTube and search for lofi hip hop"
+- "Go to wikipedia.org and tell me today's featured article"
+- "Use the browser to check the weather forecast for Kandy"
+
+How it works: the local dev server (`server/browserAgent.ts`) launches Chrome with
+Playwright and lets Gemini (function calling) read the page and click/type step by step.
+A banner shows each step, with a **Stop** button.
+
+- Needs `GEMINI_API_KEY` in `.env` and Google Chrome installed.
+- Runs only on `npm run dev` / `npm run preview` on your own computer; it is disabled on
+  deployed sites, and only Lexi's own page can start a task.
+- Uses a separate Chrome profile (`~/.lexi/browser-profile`), not your everyday one.
+  Sign in to sites there yourself if a task needs it.
+- Lexi never types passwords or payment details, and stops before buttons such as
+  Buy, Pay, Send, or Delete so you can decide yourself.
+
 ### Example Conversations
 
 #### Weather Plugin

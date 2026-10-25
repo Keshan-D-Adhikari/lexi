@@ -15,12 +15,21 @@ Add per-IP rate limiting (or an auth check) in `server/apiProxy.ts` before deplo
 There are no unit tests, including for the intent parser (`src/core/brain/intentParser.ts`),
 and no CI pipeline. Regressions in intent rules or the AI fallback logic would go unnoticed.
 
-### Real AI replies and deployment are untested
-- AI replies have only been tested with fake keys (the error and fallback path). A real
-  `OPENROUTER_API_KEY` / `GEMINI_API_KEY` run has not been done.
-- The default Gemini model `gemini-flash-latest` has not been confirmed with a real key.
-  If it fails, set `GEMINI_MODEL` in `.env`.
+### Parts of the AI setup and deployment are untested
+- Gemini replies are tested with a real key. `gemini-flash-latest` is often overloaded
+  (503), so the app falls back to `gemini-flash-lite-latest`. OpenRouter has only been tested
+  with a fake key (error/fallback path).
 - The Vercel function (`api/proxy.ts` + `vercel.json`) has not been tested on a real deployment.
+
+### Browser control limitations
+- Gemini's dedicated computer-use API (Interactions API) rejected follow-up turns with
+  "Request blocked due to safety violations" for this project's key, so the agent uses
+  regular Gemini function calling over a text view of the page instead. Pages that are
+  mostly visual (maps, canvas apps, CAPTCHAs) are hard for it.
+- Tested on Wikipedia and YouTube searches only. Sites that need sign-in require the user
+  to log in once in the agent's Chrome profile.
+- Risky-button detection is keyword-based (Buy, Pay, Send, Delete, ...) and can miss
+  buttons with unusual labels.
 
 ## Medium priority
 

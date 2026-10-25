@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
-import { Mic, MicOff, Brain, Volume2, Pause, Play, Square, Send, X } from 'lucide-react';
+import { Mic, MicOff, Brain, Volume2, Pause, Play, Square, Send, X, Globe } from 'lucide-react';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../hooks/useTextToSpeech';
 import { speechService } from '../services/speechService';
@@ -9,6 +9,7 @@ import { useVoiceState } from '../contexts/VoiceStateContext';
 import { usePluginContextSafe } from '../contexts/PluginContext';
 import { useConversation } from '../contexts/ConversationContext';
 import { getServiceStatus } from '../utils/env';
+import { BROWSER_PROGRESS_EVENT, stopBrowserTask, type BrowserTaskState } from '../core/plugins/browser';
 
 interface VoiceControlsProps {
     onMessage?: (message: { text: string; isUser: boolean; timestamp: Date }) => void;
@@ -30,6 +31,14 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
     const textInputRef = useRef<HTMLInputElement>(null);
     const { pendingPrompt, consumePrompt } = useConversation();
     const isDark = theme === 'dark';
+    const [browserTask, setBrowserTask] = useState<BrowserTaskState | null>(null);
+
+    // Live progress of a browser task started by the browser plugin
+    useEffect(() => {
+        const onProgress = (event: Event) => setBrowserTask((event as CustomEvent<BrowserTaskState | null>).detail);
+        window.addEventListener(BROWSER_PROGRESS_EVENT, onProgress);
+        return () => window.removeEventListener(BROWSER_PROGRESS_EVENT, onProgress);
+    }, []);
 
     const speechRecognition = useSpeechRecognition({
         continuous: false,
@@ -266,6 +275,31 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
                             <X className="w-4 h-4" />
                         </button>
                     </div>
+                </div>
+            )}
+
+            {browserTask && (
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className={`mb-3 rounded-2xl border px-4 py-3 shadow-lg backdrop-blur-md flex items-center gap-3 ${isDark
+                        ? 'bg-slate-900/90 border-white/10 text-slate-200'
+                        : 'bg-white/95 border-slate-200 text-slate-800'
+                        }`}
+                >
+                    <Globe className={`w-5 h-5 shrink-0 animate-pulse ${isDark ? 'text-sky-300' : 'text-sky-600'}`} />
+                    <div className="flex-1 min-w-0 text-sm">
+                        <p className="font-semibold">Using the browser…</p>
+                        <p className={`truncate ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                            {browserTask.steps[browserTask.steps.length - 1]?.detail ?? 'Thinking about the first step'}
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => stopBrowserTask(browserTask.id)}
+                        className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium bg-rose-500 text-white hover:bg-rose-600"
+                    >
+                        Stop
+                    </button>
                 </div>
             )}
 

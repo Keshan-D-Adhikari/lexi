@@ -6,12 +6,20 @@ export type Intent =
   | { plugin: 'weather'; parameters: { location: string | null }; confidence: number }
   | { plugin: 'news'; parameters: { topic: string }; confidence: number }
   | { plugin: 'search'; parameters: { query: string }; confidence: number }
-  | { plugin: 'youtube'; parameters: { query: string }; confidence: number };
+  | { plugin: 'youtube'; parameters: { query: string }; confidence: number }
+  | { plugin: 'browser'; parameters: { goal: string }; confidence: number };
 
 // "hey lexi, can you please ..." -> "..."
 const POLITE_PREFIX = /^(?:(?:hey|hi|ok|okay)\s+)?(?:lexi[,\s]+)?(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?/;
 const TRAILING_FILLER = /\s+(?:please|for me|right now|now|today|tonight|tomorrow)$/;
 const TIME_WORDS = /^(?:today|tomorrow|tonight|now|right now|this week|this weekend|the week|the weekend)$/;
+
+// Requests to act in the browser; the whole sentence is passed on as the goal
+const BROWSER_PATTERNS = [
+  /^(?:open|go to|goto|visit|browse to|navigate to|launch)\s+\S/,
+  /\b(?:in|on|using|with|use)\s+(?:the\s+|my\s+)?(?:browser|chrome)\b/,
+  /^(?:browser|browse)\s+\S/,
+];
 
 const YOUTUBE_PATTERNS = [
   /^(?:play|watch|show me|find|search(?: for)?)\s+(.+?)\s+(?:on|from)\s+youtube$/,
@@ -61,6 +69,11 @@ export class IntentParser {
   async parseIntent(userInput: string): Promise<Intent | null> {
     const text = normalize(userInput);
     if (!text) return null;
+
+    // Explicit browser actions first: "open youtube and play lofi" should drive the browser
+    if (BROWSER_PATTERNS.some((pattern) => pattern.test(text))) {
+      return { plugin: 'browser', parameters: { goal: userInput.trim() }, confidence: 0.9 };
+    }
 
     // YouTube before search so "search for cats on youtube" goes to YouTube
     const youtube = firstMatch(YOUTUBE_PATTERNS, text);

@@ -44,9 +44,9 @@ export const PluginProvider: React.FC<PluginProviderProps> = ({ children }) => {
         try {
             const response = await lexiBrain.processUserInput(userInput);
 
-            if (response.result.success) {
+            if (response.shouldShowCard) {
                 setCurrentResult(response.result);
-            } else {
+            } else if (!response.result.success) {
                 setError(response.result.summary);
             }
 

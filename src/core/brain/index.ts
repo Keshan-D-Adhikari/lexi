@@ -3,12 +3,13 @@ import { weatherPlugin } from '../plugins/weather';
 import { newsPlugin } from '../plugins/news';
 import { searchPlugin } from '../plugins/search';
 import { youtubePlugin } from '../plugins/youtube';
+import { browserPlugin } from '../plugins/browser';
 
 export interface PluginResult {
   success: boolean;
   data?: any;
   error?: string;
-  type: 'weather' | 'news' | 'search' | 'youtube' | 'general';
+  type: 'weather' | 'news' | 'search' | 'youtube' | 'browser' | 'general';
   summary: string;
 }
 
@@ -25,6 +26,7 @@ export class LexiBrain {
     news: newsPlugin,
     search: searchPlugin,
     youtube: youtubePlugin,
+    browser: browserPlugin,
   };
 
   async processUserInput(userInput: string): Promise<BrainResponse> {
@@ -60,13 +62,17 @@ export class LexiBrain {
         case 'youtube':
           result = await this.plugins.youtube.execute(intent.parameters);
           break;
+        case 'browser':
+          result = await this.plugins.browser.execute(intent.parameters);
+          break;
       }
       
       return {
         pluginUsed: intent.plugin,
         result,
         shouldSpeak: true,
-        shouldShowCard: result.success,
+        // Browser results are spoken; the page itself is the "card"
+        shouldShowCard: result.success && intent.plugin !== 'browser',
       };
     } catch (error) {
       console.error('Brain processing error:', error);

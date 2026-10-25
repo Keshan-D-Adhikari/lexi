@@ -18,6 +18,7 @@
     "framer-motion": "^11.18.2",
     "lucide-react": "^0.344.0",
     "onnxruntime-web": "^1.23.0",
+    "playwright-core": "^1.56.1",
     "postprocessing": "^6.35.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
