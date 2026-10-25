@@ -69,7 +69,7 @@ export function StartLexiButton({ onInitialized }: StartLexiButtonProps) {
     return (
         <div className={`absolute inset-0 flex items-center justify-center z-30 ${theme === 'dark' ? 'bg-slate-900/95' : 'bg-white/95'
             }`}>
-            <div className={`text-center p-8 rounded-xl shadow-xl border ${theme === 'dark'
+            <div className={`text-center p-6 sm:p-8 mx-4 max-w-md rounded-xl shadow-xl border ${theme === 'dark'
                 ? 'bg-slate-800 border-slate-600 text-slate-200'
                 : 'bg-white border-gray-200 text-gray-800'
                 }`}>
@@ -77,11 +77,11 @@ export function StartLexiButton({ onInitialized }: StartLexiButtonProps) {
                     <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                         <span className="text-3xl">🤖</span>
                     </div>
-                    <h1 className="text-3xl font-bold mb-2">Welcome to Talking Lexi</h1>
-                    <p className="text-sm opacity-75 mb-4">
+                    <h1 className="text-2xl sm:text-3xl font-bold mb-2">Welcome to Talking Lexi</h1>
+                    <p className="text-sm opacity-90 mb-4">
                         Your 3D AI Assistant is ready to help you!
                     </p>
-                    <p className="text-xs opacity-60">
+                    <p className="text-sm opacity-80">
                         Click the button below to activate audio and start your conversation with Lexi.
                     </p>
                 </div>
@@ -106,7 +106,7 @@ export function StartLexiButton({ onInitialized }: StartLexiButtonProps) {
                     )}
                 </button>
 
-                <p className="text-xs opacity-50 mt-4">
+                <p className="text-xs opacity-75 mt-4">
                     This activates your browser's audio context for voice interaction
                 </p>
             </div>

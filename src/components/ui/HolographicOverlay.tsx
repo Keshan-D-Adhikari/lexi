@@ -27,7 +27,7 @@ interface HolographicOverlayProps {
 export const HolographicOverlay: React.FC<HolographicOverlayProps> = ({ isMobile }) => {
     const [isVisible, setIsVisible] = useState(false);
     const pluginContext = usePluginContextSafe();
-    const { addMessage } = useConversation();
+    const { sendPrompt } = useConversation();
 
     useEffect(() => {
         setIsVisible(true);
@@ -42,7 +42,7 @@ export const HolographicOverlay: React.FC<HolographicOverlayProps> = ({ isMobile
             color: "from-cyan-400 to-cyan-600",
             glowColor: "shadow-cyan-500/50",
             action: () => {
-                addMessage("Search for something on the web");
+                sendPrompt("search for ", { draft: true });
             }
         },
         {
@@ -53,7 +53,7 @@ export const HolographicOverlay: React.FC<HolographicOverlayProps> = ({ isMobile
             color: "from-cyan-400 to-cyan-600",
             glowColor: "shadow-cyan-500/50",
             action: () => {
-                addMessage("What's the weather like?");
+                sendPrompt("weather in ", { draft: true });
             }
         },
         {
@@ -64,7 +64,7 @@ export const HolographicOverlay: React.FC<HolographicOverlayProps> = ({ isMobile
             color: "from-violet-400 to-violet-600",
             glowColor: "shadow-violet-500/50",
             action: () => {
-                addMessage("Show me the latest news");
+                sendPrompt("latest news");
             }
         },
         {
@@ -75,7 +75,7 @@ export const HolographicOverlay: React.FC<HolographicOverlayProps> = ({ isMobile
             color: "from-violet-400 to-violet-600",
             glowColor: "shadow-violet-500/50",
             action: () => {
-                addMessage("Search for videos on YouTube");
+                sendPrompt("youtube ", { draft: true });
             }
         },
         {
@@ -86,7 +86,7 @@ export const HolographicOverlay: React.FC<HolographicOverlayProps> = ({ isMobile
             color: "from-cyan-400 to-cyan-600",
             glowColor: "shadow-cyan-500/50",
             action: () => {
-                addMessage("Hello Lexi, how can you help me today?");
+                sendPrompt("Hello Lexi, how can you help me today?");
             }
         }
     ];

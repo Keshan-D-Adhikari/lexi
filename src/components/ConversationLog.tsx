@@ -10,7 +10,7 @@ export function ConversationLog() {
     }
 
     return (
-        <div className={`absolute top-20 right-4 z-20 w-80 max-h-96 overflow-hidden rounded-xl shadow-lg border transition-colors duration-300 ${theme === 'dark'
+        <div className={`absolute top-20 sm:top-24 right-3 sm:right-6 z-30 w-[calc(100vw-1.5rem)] sm:w-80 max-h-96 overflow-hidden rounded-xl shadow-lg border transition-colors duration-300 ${theme === 'dark'
             ? 'bg-slate-800/90 border-slate-600/50'
             : 'bg-white/90 border-gray-200/50'
             }`}>
@@ -33,6 +33,7 @@ export function ConversationLog() {
                     </button>
                     <button
                         onClick={toggleVisibility}
+                        aria-label="Close conversation"
                         className={`text-xs px-2 py-1 rounded transition-colors duration-200 ${theme === 'dark'
                             ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-700'
                             : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
@@ -50,7 +51,7 @@ export function ConversationLog() {
                         }`}>
                         <div className="text-2xl mb-2">🤖</div>
                         <p className="text-sm">Start a conversation with Lexi!</p>
-                        <p className="text-xs mt-1 opacity-60">Click the microphone to begin</p>
+                        <p className="text-xs mt-1">Tap the mic or type a message to begin</p>
                     </div>
                 ) : (
                     messages.map((message) => (

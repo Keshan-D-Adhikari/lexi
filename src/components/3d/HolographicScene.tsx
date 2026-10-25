@@ -9,7 +9,7 @@ import { useConversation } from '../../contexts/ConversationContext';
 
 const HolographicCards: React.FC = () => {
     const pluginContext = usePluginContextSafe();
-    const { addMessage } = useConversation();
+    const { sendPrompt } = useConversation();
     const groupRef = useRef<THREE.Group>(null);
     const { viewport } = useThree();
 
@@ -21,7 +21,7 @@ const HolographicCards: React.FC = () => {
             icon: "🔍",
             color: "#00fff2",
             action: () => {
-                addMessage("Search for something on the web");
+                sendPrompt("search for ", { draft: true });
                 // Trigger search plugin
             }
         },
@@ -32,7 +32,7 @@ const HolographicCards: React.FC = () => {
             icon: "🌦️",
             color: "#00fff2",
             action: () => {
-                addMessage("What's the weather like?");
+                sendPrompt("weather in ", { draft: true });
                 // Trigger weather plugin
             }
         },
@@ -43,7 +43,7 @@ const HolographicCards: React.FC = () => {
             icon: "📰",
             color: "#b794f6",
             action: () => {
-                addMessage("Show me the latest news");
+                sendPrompt("latest news");
                 // Trigger news plugin
             }
         },
@@ -54,7 +54,7 @@ const HolographicCards: React.FC = () => {
             icon: "📺",
             color: "#b794f6",
             action: () => {
-                addMessage("Search for videos on YouTube");
+                sendPrompt("youtube ", { draft: true });
                 // Trigger YouTube plugin
             }
         },
@@ -65,7 +65,7 @@ const HolographicCards: React.FC = () => {
             icon: "🧠",
             color: "#00fff2",
             action: () => {
-                addMessage("Hello Lexi, how can you help me today?");
+                sendPrompt("Hello Lexi, how can you help me today?");
                 // Trigger brain API
             }
         }

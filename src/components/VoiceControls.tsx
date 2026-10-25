@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Mic, MicOff, Brain, Volume2, Pause, Play, Square } from 'lucide-react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { Mic, MicOff, Brain, Volume2, Pause, Play, Square, Send, X } from 'lucide-react';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useTextToSpeech } from '../hooks/useTextToSpeech';
 import { speechService } from '../services/speechService';
@@ -7,6 +7,8 @@ import { aiService, AIResponse } from '../services/aiService';
 import { useTheme } from '../contexts/ThemeContext';
 import { useVoiceState } from '../contexts/VoiceStateContext';
 import { usePluginContextSafe } from '../contexts/PluginContext';
+import { useConversation } from '../contexts/ConversationContext';
+import { getServiceStatus } from '../utils/env';
 
 interface VoiceControlsProps {
     onMessage?: (message: { text: string; isUser: boolean; timestamp: Date }) => void;
@@ -23,6 +25,11 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
     const [lastModelUsed, setLastModelUsed] = useState<string>('');
     const [modelAttempts, setModelAttempts] = useState<string[]>([]);
     const [showDebugPanel, setShowDebugPanel] = useState(false);
+    const [pluginsAvailable, setPluginsAvailable] = useState(false);
+    const [textInput, setTextInput] = useState('');
+    const textInputRef = useRef<HTMLInputElement>(null);
+    const { pendingPrompt, consumePrompt } = useConversation();
+    const isDark = theme === 'dark';
 
     const speechRecognition = useSpeechRecognition({
         continuous: false,
@@ -69,6 +76,10 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
         aiService.init().then((ready) => {
             setAiReady(ready);
             setShowSetupNotice(!ready);
+        });
+        // Only advertise plugins when the server has at least one plugin key
+        getServiceStatus().then((status) => {
+            setPluginsAvailable(status.weather || status.news || status.search || status.youtube);
         });
     }, []);
 
@@ -170,6 +181,29 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
         }
     };
 
+    const isBusy = isProcessing || isThinking || !!pluginContext?.isProcessing || textToSpeech.isSpeaking;
+
+    useEffect(() => {
+        if (!pendingPrompt) return;
+        consumePrompt();
+        if (pendingPrompt.draft || isBusy) {
+            // Let the user finish the sentence (or wait until Lexi is done talking)
+            setTextInput(pendingPrompt.text);
+            textInputRef.current?.focus();
+        } else {
+            handleUserInput(pendingPrompt.text);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pendingPrompt]);
+
+    const handleTextSubmit = (event: FormEvent) => {
+        event.preventDefault();
+        const text = textInput.trim();
+        if (!text || isBusy) return;
+        setTextInput('');
+        handleUserInput(text);
+    };
+
     // Status label/style for compact text-only chip (no icons)
     const getStatusLabel = () => {
         if (speechRecognition.isListening) return 'Listening';
@@ -205,31 +239,39 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
         return `${tone.base} ${tone.ready}`;
     };
 
-    if (showSetupNotice) {
-        return (
-            <div className={`absolute bottom-20 left-1/2 transform -translate-x-1/2 z-20 p-4 rounded-xl ar-floating-card transition-colors duration-300 max-w-[92vw]`}>
-                <div className="text-center">
-                    <h3 className="text-sm font-semibold mb-2">🧠 Setup AI Brain</h3>
-                    <p className="text-xs mb-3 opacity-80">
-                        Add <code>OPENROUTER_API_KEY</code> (or <code>GEMINI_API_KEY</code>) to the server <code>.env</code> file and restart the server.
-                        Keys stay on the server and are never sent to the browser.
-                    </p>
-                    <button
-                        onClick={() => setShowSetupNotice(false)}
-                        className="text-xs text-blue-400 hover:text-blue-300"
-                    >
-                        Continue with basic responses
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
     return (
-        <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-20">
-            <div className={`ar-floating-card rounded-2xl px-5 py-4 w-[420px] max-w-[92vw]`}>
+        <div className="absolute bottom-4 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-20 w-[440px] max-w-[calc(100vw-2rem)]">
+            {/* AI setup notice: keys live in the server .env, so this only explains where to put them */}
+            {showSetupNotice && (
+                <div
+                    role="status"
+                    className={`mb-3 rounded-2xl border px-4 py-3 shadow-lg backdrop-blur-md ${isDark
+                        ? 'bg-slate-900/90 border-white/10 text-slate-200'
+                        : 'bg-white/95 border-slate-200 text-slate-800'
+                        }`}
+                >
+                    <div className="flex items-start gap-3">
+                        <Brain className={`w-5 h-5 mt-0.5 shrink-0 ${isDark ? 'text-violet-300' : 'text-violet-600'}`} />
+                        <div className="flex-1 text-sm">
+                            <p className="font-semibold">AI Brain is not set up</p>
+                            <p className={`mt-1 leading-relaxed ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                                Add <code className="font-mono text-xs">OPENROUTER_API_KEY</code> (or <code className="font-mono text-xs">GEMINI_API_KEY</code>) to the server <code className="font-mono text-xs">.env</code> and restart. Until then Lexi uses basic replies.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setShowSetupNotice(false)}
+                            aria-label="Dismiss AI setup notice"
+                            className={`p-1 rounded-lg ${isDark ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            <div className={`ar-floating-card rounded-2xl px-4 py-4 sm:px-5 ${isDark ? 'bg-slate-900/60 text-slate-200' : 'bg-white/70 text-slate-800'}`}>
                 {/* Layout: avatar | content | controls */}
-                <div className="grid grid-cols-[auto,1fr,auto] items-center gap-5">
+                <div className="grid grid-cols-[auto,1fr,auto] items-center gap-3 sm:gap-5">
                     {/* Mic button */}
                     <button
                         aria-label={speechRecognition.isListening ? 'Stop listening' : 'Start listening'}
@@ -248,14 +290,14 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
                     </button>
 
                     {/* Content */}
-                    <div className="min-w-[12rem]">
-                        <div className="flex items-center gap-3">
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
                             <span className={getStatusClass()}>{getStatusLabel()}</span>
                             <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${theme === 'dark' ? 'bg-violet-500/25 text-violet-200' : 'bg-violet-600/10 text-violet-700'}`}>
                                 <Brain className="w-3 h-3" />
                                 <span className="font-medium">{aiReady ? 'AI Brain' : 'Basic Mode'}</span>
                             </span>
-                            {pluginContext && (
+                            {pluginContext && pluginsAvailable && (
                                 <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${theme === 'dark' ? 'bg-green-500/25 text-green-200' : 'bg-green-600/10 text-green-700'}`}>
                                     <span className="w-2 h-2 bg-green-400 rounded-full"></span>
                                     <span className="font-medium">Plugins</span>
@@ -287,18 +329,40 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
                             </button>
                         )}
                         {!textToSpeech.isSpeaking && (
-                            <div className="w-9 h-9 rounded-xl flex items-center justify-center opacity-70 border border-white/10 ${theme === 'dark' ? 'text-slate-200' : 'text-gray-700'}">
+                            <div aria-hidden="true" className={`w-9 h-9 rounded-xl flex items-center justify-center border ${isDark ? 'border-white/10 text-slate-300' : 'border-slate-300 text-slate-600'}`}>
                                 <Volume2 className="w-4 h-4" />
                             </div>
                         )}
                     </div>
                 </div>
 
+                {/* Text input: works without a microphone or Web Speech support */}
+                <form onSubmit={handleTextSubmit} className="mt-3 flex items-center gap-2">
+                    <label htmlFor="lexi-text-input" className="sr-only">Message Lexi</label>
+                    <input
+                        id="lexi-text-input"
+                        ref={textInputRef}
+                        value={textInput}
+                        onChange={(e) => setTextInput(e.target.value)}
+                        placeholder={speechRecognition.isSupported ? 'Type a message or tap the mic' : 'Type a message (voice not supported here)'}
+                        autoComplete="off"
+                        className={`flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-400 ${isDark
+                            ? 'bg-slate-800/80 border-white/10 text-slate-100 placeholder-slate-400'
+                            : 'bg-white border-slate-300 text-slate-900 placeholder-slate-500'
+                            }`}
+                    />
+                    <button
+                        type="submit"
+                        aria-label="Send message"
+                        disabled={!textInput.trim() || isBusy}
+                        className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                        <Send className="w-4 h-4" />
+                    </button>
+                </form>
+
                 {/* Footer actions */}
-                <div className="mt-3 flex items-center justify-between">
-                    <div className={`text-xs ${theme === 'dark' ? 'text-slate-300' : 'text-gray-700'} opacity-80`}>
-                        {speechRecognition.isSupported ? 'Click microphone to talk to Lexi' : 'Speech recognition not supported in this browser'}
-                    </div>
+                <div className="mt-2 flex items-center justify-end">
                     {aiReady && (
                         <button onClick={() => setShowDebugPanel(!showDebugPanel)} className="text-xs text-blue-300 hover:text-blue-200 font-medium">
                             {showDebugPanel ? 'Hide' : 'Show'} Model Debug

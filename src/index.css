@@ -345,3 +345,15 @@ body {
   .holographic-scrollbar::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(45deg, #00e6d6, #a78bfa);
   }
+
+/* Respect users who ask the OS for less motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
