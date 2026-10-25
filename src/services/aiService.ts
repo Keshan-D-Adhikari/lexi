@@ -30,8 +30,9 @@ const DEFAULT_OPENROUTER_MODELS = [
   'google/gemma-4-31b-it:free',
   'nvidia/nemotron-3-super-120b-a12b:free',
 ];
-// "-latest" alias keeps pointing at a current Flash model as Google retires versions
-const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
+// "-latest" aliases keep pointing at current models as Google retires versions.
+// Flash is often overloaded (503 "high demand"), so Flash-Lite is the fallback.
+const DEFAULT_GEMINI_MODELS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
 
 const MAX_OUTPUT_TOKENS = 250;
 const TEMPERATURE = 0.7;
@@ -39,6 +40,8 @@ const TEMPERATURE = 0.7;
 const TOTAL_DEADLINE_MS = 15000;
 // When both providers are configured, start OpenRouter if Gemini has not answered by then
 const HEDGE_DELAY_MS = 2500;
+// An overloaded Gemini model can hang instead of failing, so give each model a slice of the deadline
+const GEMINI_ATTEMPT_TIMEOUT_MS = 6000;
 
 const SYSTEM_PROMPT = "You are Lexi, a friendly 3D AI robot assistant who speaks politely, concisely, and with a touch of personality. Keep your responses conversational and not too long, as you're speaking to users through voice. Be helpful, engaging, and show your robotic personality in a charming way.";
 
@@ -98,8 +101,8 @@ export class AIService {
 
     const providers: ProviderCall[] = [];
     if (this.status.gemini) {
-      const model = this.status.models?.gemini || DEFAULT_GEMINI_MODEL;
-      providers.push({ name: `Gemini (${model})`, run: (signal) => this.callGemini(messages, model, signal) });
+      const models = this.status.models?.gemini?.length ? this.status.models.gemini : DEFAULT_GEMINI_MODELS;
+      providers.push({ name: 'Gemini', run: (signal) => this.callGeminiWithFallback(messages, models, signal) });
     }
     if (this.status.openrouter) {
       const models = this.status.models?.openrouter?.length ? this.status.models.openrouter : DEFAULT_OPENROUTER_MODELS;
@@ -205,6 +208,32 @@ export class AIService {
       throw new Error(data.error?.message ?? 'Empty response from OpenRouter');
     }
     return { content, model: data.model ?? 'OpenRouter' };
+  }
+
+  // Tries each Gemini model in order until one answers (overloaded or retired models fail fast)
+  private async callGeminiWithFallback(
+    messages: ConversationMessage[],
+    models: string[],
+    signal: AbortSignal
+  ): Promise<{ content: string; model: string }> {
+    const errors: string[] = [];
+    for (const model of models) {
+      // Per-attempt abort that also follows the outer (race) signal
+      const attempt = new AbortController();
+      const abortAttempt = () => attempt.abort();
+      signal.addEventListener('abort', abortAttempt);
+      const timer = setTimeout(abortAttempt, GEMINI_ATTEMPT_TIMEOUT_MS);
+      try {
+        return await this.callGemini(messages, model, attempt.signal);
+      } catch (error) {
+        if (signal.aborted) throw error;
+        errors.push(attempt.signal.aborted ? `${model}: timed out` : error instanceof Error ? error.message : String(error));
+      } finally {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', abortAttempt);
+      }
+    }
+    throw new Error(errors.join(' | '));
   }
 
   private async callGemini(

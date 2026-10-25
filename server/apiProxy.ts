@@ -95,13 +95,13 @@ const hasKey = (env: ServerEnv, service: string) => {
 
 // Optional model overrides, so retired models can be swapped without a rebuild
 function getModelConfig(env: ServerEnv) {
-  const openrouter = (env.OPENROUTER_MODELS ?? '')
-    .split(',')
-    .map((model) => model.trim())
-    .filter(Boolean);
+  const list = (value: string | undefined) => {
+    const models = (value ?? '').split(',').map((model) => model.trim()).filter(Boolean);
+    return models.length ? models : null;
+  };
   return {
-    openrouter: openrouter.length ? openrouter : null,
-    gemini: env.GEMINI_MODEL?.trim() || null,
+    openrouter: list(env.OPENROUTER_MODELS),
+    gemini: list(env.GEMINI_MODEL),
   };
 }
 
