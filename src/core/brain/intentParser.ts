@@ -1,3 +1,5 @@
+import { getServiceStatus } from '../../utils/env';
+
 interface Intent {
   plugin: string;
   parameters: Record<string, any>;
@@ -58,7 +60,7 @@ export class IntentParser {
     }
 
     // Fallback to AI-based intent detection if available
-    if (this.hasOpenRouterAPI()) {
+    if (await this.hasOpenRouterAPI()) {
       return await this.aiIntentDetection(input);
     }
 
@@ -80,8 +82,8 @@ export class IntentParser {
     }
   }
 
-  private hasOpenRouterAPI(): boolean {
-    return !!import.meta.env.VITE_OPENROUTER_API_KEY;
+  private async hasOpenRouterAPI(): Promise<boolean> {
+    return (await getServiceStatus()).openrouter;
   }
 
   // Clean JSON response to handle markdown formatting
@@ -104,10 +106,10 @@ export class IntentParser {
 
   private async aiIntentDetection(input: string): Promise<Intent | null> {
     try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      // Server-side proxy adds the OpenRouter key
+      const response = await fetch('/api/openrouter/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

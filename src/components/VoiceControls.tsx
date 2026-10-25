@@ -16,8 +16,8 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
     const { theme } = useTheme();
     const { setVoiceState, updateAudioLevel, analyzeSentiment } = useVoiceState();
     const pluginContext = usePluginContextSafe();
-    const [apiKey, setApiKey] = useState('');
-    const [showApiKeyInput, setShowApiKeyInput] = useState(false);
+    const [aiReady, setAiReady] = useState(aiService.isReady());
+    const [showSetupNotice, setShowSetupNotice] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isThinking, setIsThinking] = useState(false);
     const [lastModelUsed, setLastModelUsed] = useState<string>('');
@@ -65,12 +65,11 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
     });
 
     useEffect(() => {
-        // Check if AI service is ready (OpenRouter API key)
-        if (aiService.isReady()) {
-            setShowApiKeyInput(false);
-        } else {
-            setShowApiKeyInput(true);
-        }
+        // Ask the server whether an AI key (OpenRouter or Gemini) is configured
+        aiService.init().then((ready) => {
+            setAiReady(ready);
+            setShowSetupNotice(!ready);
+        });
     }, []);
 
     const handleUserInput = async (userText: string) => {
@@ -171,14 +170,6 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
         }
     };
 
-    const handleApiKeySubmit = () => {
-        if (apiKey.trim()) {
-            aiService.setApiKey(apiKey.trim());
-            setShowApiKeyInput(false);
-            setApiKey('');
-        }
-    };
-
     // Status label/style for compact text-only chip (no icons)
     const getStatusLabel = () => {
         if (speechRecognition.isListening) return 'Listening';
@@ -214,41 +205,20 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
         return `${tone.base} ${tone.ready}`;
     };
 
-    if (showApiKeyInput) {
+    if (showSetupNotice) {
         return (
-            <div className={`absolute bottom-20 left-1/2 transform -translate-x-1/2 z-20 p-4 rounded-xl ar-floating-card transition-colors duration-300`}>
+            <div className={`absolute bottom-20 left-1/2 transform -translate-x-1/2 z-20 p-4 rounded-xl ar-floating-card transition-colors duration-300 max-w-[92vw]`}>
                 <div className="text-center">
                     <h3 className="text-sm font-semibold mb-2">🧠 Setup AI Brain</h3>
                     <p className="text-xs mb-3 opacity-80">
-                        Connect Lexi to DeepSeek AI for intelligent conversations (free tier available)
+                        Add <code>OPENROUTER_API_KEY</code> (or <code>GEMINI_API_KEY</code>) to the server <code>.env</code> file and restart the server.
+                        Keys stay on the server and are never sent to the browser.
                     </p>
-                    <div className="flex gap-2">
-                        <input
-                            type="password"
-                            value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                            placeholder="Enter OpenRouter API key"
-                            className={`px-3 py-2 rounded-lg text-sm border transition-colors duration-300 ${theme === 'dark'
-                                ? 'bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-400'
-                                : 'bg-white border-gray-300 text-gray-800 placeholder-gray-500'
-                                }`}
-                        />
-                        <button
-                            onClick={handleApiKeySubmit}
-                            disabled={!apiKey.trim()}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-300 ${apiKey.trim()
-                                ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                }`}
-                        >
-                            Setup
-                        </button>
-                    </div>
                     <button
-                        onClick={() => setShowApiKeyInput(false)}
-                        className="text-xs text-blue-400 hover:text-blue-300 mt-2"
+                        onClick={() => setShowSetupNotice(false)}
+                        className="text-xs text-blue-400 hover:text-blue-300"
                     >
-                        Skip (use basic responses)
+                        Continue with basic responses
                     </button>
                 </div>
             </div>
@@ -283,7 +253,7 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
                             <span className={getStatusClass()}>{getStatusLabel()}</span>
                             <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${theme === 'dark' ? 'bg-violet-500/25 text-violet-200' : 'bg-violet-600/10 text-violet-700'}`}>
                                 <Brain className="w-3 h-3" />
-                                <span className="font-medium">{aiService.isReady() ? 'AI Brain' : 'Basic Mode'}</span>
+                                <span className="font-medium">{aiReady ? 'AI Brain' : 'Basic Mode'}</span>
                             </span>
                             {pluginContext && (
                                 <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${theme === 'dark' ? 'bg-green-500/25 text-green-200' : 'bg-green-600/10 text-green-700'}`}>
@@ -329,7 +299,7 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
                     <div className={`text-xs ${theme === 'dark' ? 'text-slate-300' : 'text-gray-700'} opacity-80`}>
                         {speechRecognition.isSupported ? 'Click microphone to talk to Lexi' : 'Speech recognition not supported in this browser'}
                     </div>
-                    {aiService.isReady() && (
+                    {aiReady && (
                         <button onClick={() => setShowDebugPanel(!showDebugPanel)} className="text-xs text-blue-300 hover:text-blue-200 font-medium">
                             {showDebugPanel ? 'Hide' : 'Show'} Model Debug
                         </button>
@@ -346,7 +316,7 @@ export function VoiceControls({ onMessage }: VoiceControlsProps) {
             </div>
 
             {/* Debug Panel */}
-            {showDebugPanel && aiService.isReady() && (
+            {showDebugPanel && aiReady && (
                 <div className={`absolute bottom-24 left-1/2 transform -translate-x-1/2 z-20 p-3 rounded-lg ar-floating-card transition-colors duration-300 max-w-md`}>
                     <div className="text-xs">
                         <div className="font-semibold mb-2">🧠 AI Model Debug</div>

@@ -1,4 +1,6 @@
 // Speech Service for Deepgram TTS and Web Speech API
+import { getCachedServiceStatus, getServiceStatus, readProxyError } from '../utils/env';
+
 export interface SpeechConfig {
   model?: string;
   encoding?: string;
@@ -14,33 +16,18 @@ export interface VoiceMessage {
 }
 
 export class SpeechService {
-  private apiKey: string | null = null;
-  private isInitialized = false;
+  private isInitialized = getCachedServiceStatus().tts;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
 
   constructor() {
-    // Initialize with environment variable or prompt user
-    this.initializeApiKey();
-  }
-
-  private initializeApiKey() {
-    // In production, use environment variables
-    // For development, we'll prompt the user to enter their API key
-    const storedKey = localStorage.getItem('deepgram_api_key');
-    if (storedKey) {
-      this.apiKey = storedKey;
-      this.isInitialized = true;
-    }
-  }
-
-  public setApiKey(apiKey: string) {
-    this.apiKey = apiKey;
-    this.isInitialized = true;
-    localStorage.setItem('deepgram_api_key', apiKey);
+    // The Deepgram key lives on the server; only learn whether it is configured
+    getServiceStatus().then((status) => {
+      this.isInitialized = status.tts;
+    });
   }
 
   public isReady(): boolean {
-    return this.isInitialized && this.apiKey !== null;
+    return this.isInitialized;
   }
 
   // Text-to-Speech using Deepgram TTS
@@ -49,7 +36,7 @@ export class SpeechService {
     config: SpeechConfig = {}
   ): Promise<HTMLAudioElement> {
     if (!this.isReady()) {
-      throw new Error('Deepgram API key not set. Please configure your API key.');
+      throw new Error('Deepgram TTS is not configured on the server (DEEPGRAM_API_KEY).');
     }
 
     const defaultConfig = {
@@ -60,10 +47,10 @@ export class SpeechService {
     };
 
     try {
-      const response = await fetch('https://api.deepgram.com/v1/speak', {
+      // Server-side proxy adds the Deepgram key
+      const response = await fetch('/api/deepgram/speak', {
         method: 'POST',
         headers: {
-          'Authorization': `Token ${this.apiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -75,7 +62,7 @@ export class SpeechService {
       });
 
       if (!response.ok) {
-        throw new Error(`Deepgram API error: ${response.status} ${response.statusText}`);
+        throw new Error(`Deepgram API error: ${await readProxyError(response)}`);
       }
 
       const audioBlob = await response.blob();

@@ -1,4 +1,6 @@
 // AI Service with Multi-Model Fallback for OpenRouter Integration
+import { getCachedServiceStatus, getServiceStatus, type ServiceStatus } from '../utils/env';
+
 export interface AIResponse {
   content: string;
   success: boolean;
@@ -83,56 +85,18 @@ const GEMINI_DIRECT_CONFIG: GeminiConfig = {
 };
 
 export class AIService {
-  private openRouterApiKey: string | null = null;
-  private geminiApiKey: string | null = null;
-  private isInitialized = false;
+  private status: ServiceStatus = getCachedServiceStatus();
   private conversationHistory: ConversationMessage[] = [];
   private modelAttempts: ModelAttempt[] = [];
 
-  constructor() {
-    this.initializeApiKey();
-  }
-
-  private initializeApiKey() {
-    // Prefer environment variables and fall back to localStorage for development
-    const openRouterEnvKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-    const geminiEnvKey = import.meta.env.VITE_GEMINI_API_KEY;
-
-    if (openRouterEnvKey) {
-      this.openRouterApiKey = openRouterEnvKey;
-    } else {
-      const storedOpenRouterKey = localStorage.getItem('openrouter_api_key');
-      if (storedOpenRouterKey) {
-        this.openRouterApiKey = storedOpenRouterKey;
-      }
-    }
-
-    if (geminiEnvKey) {
-      this.geminiApiKey = geminiEnvKey;
-    } else {
-      const storedGeminiKey = localStorage.getItem('gemini_api_key');
-      if (storedGeminiKey) {
-        this.geminiApiKey = storedGeminiKey;
-      }
-    }
-
-    this.isInitialized = !!(this.openRouterApiKey || this.geminiApiKey);
-  }
-
-  public setApiKey(apiKey: string) {
-    this.openRouterApiKey = apiKey;
-    this.isInitialized = true;
-    localStorage.setItem('openrouter_api_key', apiKey);
-  }
-
-  public setGeminiApiKey(apiKey: string) {
-    this.geminiApiKey = apiKey;
-    this.isInitialized = true;
-    localStorage.setItem('gemini_api_key', apiKey);
+  // Keys stay on the server; ask it which AI providers are configured
+  public async init(): Promise<boolean> {
+    this.status = await getServiceStatus();
+    return this.isReady();
   }
 
   public isReady(): boolean {
-    return this.isInitialized && (this.openRouterApiKey !== null || this.geminiApiKey !== null);
+    return this.status.brain;
   }
 
   public clearConversationHistory() {
@@ -153,7 +117,7 @@ export class AIService {
 
   // Core askLexi function with multi-model fallback
   async askLexi(_prompt: string): Promise<AIResponse> {
-    if (!this.isReady()) {
+    if (!(await this.init())) {
       return {
         content: "I'm having trouble thinking right now—could you repeat that? (AI keys not configured)",
         success: false,
@@ -174,7 +138,7 @@ export class AIService {
     ];
 
     // Try direct Gemini first if available
-    if (this.geminiApiKey) {
+    if (this.status.gemini) {
       const attemptStartTime = Date.now();
 
       try {
@@ -226,7 +190,7 @@ export class AIService {
     }
 
     // Try each model sequentially
-    if (this.openRouterApiKey) {
+    if (this.status.openrouter) {
       for (const modelConfig of OPENROUTER_MODEL_CONFIGS) {
         const attemptStartTime = Date.now();
         
@@ -301,26 +265,16 @@ export class AIService {
     messages: ConversationMessage[],
     _startTime: number
   ): Promise<AIResponse> {
-    if (!this.openRouterApiKey) {
-      return {
-        content: '',
-        success: false,
-        error: 'OpenRouter API key not configured'
-      };
-    }
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
     }, modelConfig.timeout);
 
     try {
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      // Server-side proxy adds the OpenRouter key
+      const response = await fetch('/api/openrouter/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.openRouterApiKey}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Talking Lexi',
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -388,14 +342,6 @@ export class AIService {
     messages: ConversationMessage[],
     config: GeminiConfig
   ): Promise<AIResponse> {
-    if (!this.geminiApiKey) {
-      return {
-        content: '',
-        success: false,
-        error: 'Gemini API key not configured'
-      };
-    }
-
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
@@ -425,7 +371,8 @@ export class AIService {
       }
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${this.geminiApiKey}`,
+        // Server-side proxy adds the Gemini key as a header, never in the URL
+        `/api/gemini/models/${config.model}:generateContent`,
         {
           method: 'POST',
           headers: {

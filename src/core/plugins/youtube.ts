@@ -1,4 +1,5 @@
 import { PluginResult } from '../brain';
+import { getServiceStatus } from '../../utils/env';
 
 interface YouTubeVideo {
   videoId: string;
@@ -20,12 +21,11 @@ interface YouTubeData {
 export const youtubePlugin = {
   async execute(parameters: { query: string }): Promise<PluginResult> {
     try {
-      const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
-      if (!apiKey) {
+      if (!(await getServiceStatus()).youtube) {
         return {
           success: false,
           type: 'youtube',
-          summary: 'YouTube service is not configured. Please add VITE_YOUTUBE_API_KEY to your environment.',
+          summary: 'YouTube service is not configured. Please add YOUTUBE_API_KEY to the server environment.',
         };
       }
 
@@ -38,7 +38,7 @@ export const youtubePlugin = {
         };
       }
 
-      const youtubeData = await this.fetchYouTubeData(query, apiKey);
+      const youtubeData = await this.fetchYouTubeData(query);
       
       if (!youtubeData || youtubeData.videos.length === 0) {
         return {
@@ -66,11 +66,11 @@ export const youtubePlugin = {
     }
   },
 
-  async fetchYouTubeData(query: string, apiKey: string): Promise<YouTubeData | null> {
+  async fetchYouTubeData(query: string): Promise<YouTubeData | null> {
     try {
       // Search for videos
       const searchResponse = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=10&key=${apiKey}`
+        `/api/youtube/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=10`
       );
 
       if (!searchResponse.ok) {
@@ -86,7 +86,7 @@ export const youtubePlugin = {
       // Get video details for duration and view count
       const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
       const detailsResponse = await fetch(
-        `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${apiKey}`
+        `/api/youtube/videos?part=contentDetails,statistics&id=${videoIds}`
       );
 
       let videoDetails: any[] = [];

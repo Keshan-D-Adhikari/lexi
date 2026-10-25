@@ -1,4 +1,5 @@
 import { PluginResult } from '../brain';
+import { getServiceStatus } from '../../utils/env';
 
 interface NewsArticle {
   title: string;
@@ -17,17 +18,16 @@ interface NewsData {
 export const newsPlugin = {
   async execute(parameters: { topic: string }): Promise<PluginResult> {
     try {
-      const apiKey = import.meta.env.VITE_NEWS_API_KEY;
-      if (!apiKey) {
+      if (!(await getServiceStatus()).news) {
         return {
           success: false,
           type: 'news',
-          summary: 'News service is not configured. Please add VITE_NEWS_API_KEY to your environment.',
+          summary: 'News service is not configured. Please add NEWS_API_KEY to the server environment.',
         };
       }
 
       const topic = parameters.topic || 'general';
-      const newsData = await this.fetchNewsData(topic, apiKey);
+      const newsData = await this.fetchNewsData(topic);
       
       if (!newsData || newsData.articles.length === 0) {
         return {
@@ -55,18 +55,18 @@ export const newsPlugin = {
     }
   },
 
-  async fetchNewsData(topic: string, apiKey: string): Promise<NewsData | null> {
+  async fetchNewsData(topic: string): Promise<NewsData | null> {
     try {
       const query = topic === 'general' ? 'top headlines' : topic;
       const response = await fetch(
-        `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=10&apiKey=${apiKey}`
+        `/api/news/everything?q=${encodeURIComponent(query)}&sortBy=publishedAt&pageSize=10`
       );
 
       if (!response.ok) {
         // Try top headlines if everything fails
         if (topic === 'general') {
           const headlinesResponse = await fetch(
-            `https://newsapi.org/v2/top-headlines?country=us&pageSize=10&apiKey=${apiKey}`
+            `/api/news/top-headlines?country=us&pageSize=10`
           );
           
           if (headlinesResponse.ok) {

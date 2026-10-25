@@ -122,7 +122,7 @@
 5. **Open your browser**
    - Navigate to `http://localhost:5173`
    - Click "🚀 Click to Start Lexi" to initialize audio
-   - Enter your OpenRouter API key when prompted (or skip for basic mode)
+   - If no AI key is configured on the server, Lexi runs in basic mode
    - Start talking with Lexi!
 
 ### Build for Production
@@ -165,19 +165,23 @@ Create a `.env` file in the project root:
 
 ```env
 # Required for AI conversations
-VITE_OPENROUTER_API_KEY=your_openrouter_key_here
+OPENROUTER_API_KEY=your_openrouter_key_here
 
 # Optional: Direct Gemini access
-VITE_GEMINI_API_KEY=your_gemini_key_here
+GEMINI_API_KEY=your_gemini_key_here
+
+# Optional: Voice and sentiment
+DEEPGRAM_API_KEY=your_deepgram_key_here
+HUGGINGFACE_TOKEN=your_huggingface_token_here
 
 # Optional: Plugin APIs (add as needed)
-VITE_WEATHER_API_KEY=your_openweathermap_key_here
-VITE_NEWS_API_KEY=your_newsapi_key_here
-VITE_SERPER_API_KEY=your_serper_key_here
-VITE_YOUTUBE_API_KEY=your_youtube_key_here
+WEATHER_API_KEY=your_openweathermap_key_here
+NEWS_API_KEY=your_newsapi_key_here
+SERPER_API_KEY=your_serper_key_here
+YOUTUBE_API_KEY=your_youtube_key_here
 ```
 
-> **Note**: API keys can also be entered directly in the application interface if not set in `.env`.
+> **Security**: API keys are server-side only. Do **not** prefix them with `VITE_`, which would bundle them into the browser JavaScript. The browser calls `/api/<service>/...` and the proxy in `server/apiProxy.ts` adds the key. In development the Vite dev server runs this proxy; on Vercel, `api/proxy.ts` runs it (add the keys under Project Settings → Environment Variables). Restart the dev server after changing `.env`.
 
 ---
 
@@ -188,7 +192,6 @@ VITE_YOUTUBE_API_KEY=your_youtube_key_here
 1. **Initialize Lexi**
    - Click the "🚀 Click to Start Lexi" button
    - Grant microphone permissions when prompted
-   - Enter your API key if not configured in `.env`
 
 2. **Start a Conversation**
    - Click the microphone button
@@ -629,7 +632,7 @@ Models are configured in `src/services/aiService.ts` with:
 **Problem**: Lexi doesn't respond or shows "AI keys not configured".
 
 **Solutions**:
-- Verify API keys are set in `.env` or entered in the app
+- Verify API keys are set in the server `.env` (without the `VITE_` prefix)
 - Check API key validity
 - Ensure internet connection is active
 - Check browser console for API errors

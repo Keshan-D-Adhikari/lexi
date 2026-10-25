@@ -1,8 +1,10 @@
 export type EmotionLabel = 'positive' | 'neutral' | 'concerned';
 
+import { getServiceStatus } from '../utils/env';
+
 // Hugging Face Inference API - Free tier: 1000 requests/month
-const HUGGINGFACE_API_URL = 'https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest';
-const HUGGINGFACE_TOKEN = import.meta.env.VITE_HUGGINGFACE_TOKEN;
+// Called through the server-side proxy, which adds HUGGINGFACE_TOKEN
+const HUGGINGFACE_API_URL = '/api/huggingface/models/cardiffnlp/twitter-roberta-base-sentiment-latest';
 
 interface HuggingFaceResponse {
   label: 'positive' | 'neutral' | 'negative';
@@ -12,14 +14,13 @@ interface HuggingFaceResponse {
 export async function analyzeSentimentAPI(text: string): Promise<EmotionLabel> {
   try {
     // Check if token is available
-    if (!HUGGINGFACE_TOKEN || HUGGINGFACE_TOKEN === 'your_huggingface_token_here') {
+    if (!(await getServiceStatus()).sentiment) {
       return analyzeSentimentSimple(text);
     }
 
     const response = await fetch(HUGGINGFACE_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${HUGGINGFACE_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

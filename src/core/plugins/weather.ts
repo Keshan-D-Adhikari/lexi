@@ -1,4 +1,5 @@
 import { PluginResult } from '../brain';
+import { getServiceStatus } from '../../utils/env';
 
 interface WeatherData {
   location: string;
@@ -12,17 +13,16 @@ interface WeatherData {
 export const weatherPlugin = {
   async execute(parameters: { location: string }): Promise<PluginResult> {
     try {
-      const apiKey = import.meta.env.VITE_WEATHER_API_KEY;
-      if (!apiKey) {
+      if (!(await getServiceStatus()).weather) {
         return {
           success: false,
           type: 'weather',
-          summary: 'Weather service is not configured. Please add VITE_WEATHER_API_KEY to your environment.',
+          summary: 'Weather service is not configured. Please add WEATHER_API_KEY to the server environment.',
         };
       }
 
       const location = parameters.location || 'current location';
-      const weatherData = await this.fetchWeatherData(location, apiKey);
+      const weatherData = await this.fetchWeatherData(location);
       
       if (!weatherData) {
         return {
@@ -50,11 +50,11 @@ export const weatherPlugin = {
     }
   },
 
-  async fetchWeatherData(location: string, apiKey: string): Promise<WeatherData | null> {
+  async fetchWeatherData(location: string): Promise<WeatherData | null> {
     try {
       // First, get coordinates for the location
       const geoResponse = await fetch(
-        `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(location)}&limit=1&appid=${apiKey}`
+        `/api/weather/geo/1.0/direct?q=${encodeURIComponent(location)}&limit=1`
       );
       
       if (!geoResponse.ok) {
@@ -70,7 +70,7 @@ export const weatherPlugin = {
 
       // Get weather data
       const weatherResponse = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`
+        `/api/weather/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric`
       );
 
       if (!weatherResponse.ok) {

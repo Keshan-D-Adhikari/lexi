@@ -1,32 +1,58 @@
-export const ENV_CONFIG = {
-  // AI Brain
-  OPENROUTER_API_KEY: import.meta.env.VITE_OPENROUTER_API_KEY,
-  GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
-  
-  // Plugin APIs
-  WEATHER_API_KEY: import.meta.env.VITE_WEATHER_API_KEY,
-  NEWS_API_KEY: import.meta.env.VITE_NEWS_API_KEY,
-  SERPER_API_KEY: import.meta.env.VITE_SERPER_API_KEY,
-  YOUTUBE_API_KEY: import.meta.env.VITE_YOUTUBE_API_KEY,
-} as const;
+// API keys live on the server (see server/apiProxy.ts). The browser only learns
+// which services are configured, never the keys themselves.
+export interface ServiceStatus {
+  brain: boolean;
+  openrouter: boolean;
+  gemini: boolean;
+  tts: boolean;
+  weather: boolean;
+  news: boolean;
+  search: boolean;
+  youtube: boolean;
+  sentiment: boolean;
+}
 
-export const isPluginEnabled = (plugin: keyof typeof ENV_CONFIG): boolean => {
-  return !!ENV_CONFIG[plugin];
+const NONE_CONFIGURED: ServiceStatus = {
+  brain: false,
+  openrouter: false,
+  gemini: false,
+  tts: false,
+  weather: false,
+  news: false,
+  search: false,
+  youtube: false,
+  sentiment: false,
 };
 
-export const getEnabledPlugins = (): string[] => {
-  return Object.entries(ENV_CONFIG)
-    .filter(([_, value]) => !!value)
-    .map(([key, _]) => key.replace('_API_KEY', '').toLowerCase());
-};
+let cachedStatus: ServiceStatus | null = null;
+let pendingStatus: Promise<ServiceStatus> | null = null;
 
-export const getPluginStatus = () => {
-  return {
-    brain: isPluginEnabled('OPENROUTER_API_KEY') || isPluginEnabled('GEMINI_API_KEY'),
-    gemini: isPluginEnabled('GEMINI_API_KEY'),
-    weather: isPluginEnabled('WEATHER_API_KEY'),
-    news: isPluginEnabled('NEWS_API_KEY'),
-    search: isPluginEnabled('SERPER_API_KEY'),
-    youtube: isPluginEnabled('YOUTUBE_API_KEY'),
-  };
-};
+export function getServiceStatus(): Promise<ServiceStatus> {
+  if (cachedStatus) return Promise.resolve(cachedStatus);
+  if (!pendingStatus) {
+    pendingStatus = fetch('/api/status')
+      .then((response) => (response.ok ? response.json() : NONE_CONFIGURED))
+      .catch(() => NONE_CONFIGURED)
+      .then((status: ServiceStatus) => {
+        cachedStatus = status;
+        return status;
+      });
+  }
+  return pendingStatus;
+}
+
+// Synchronous read for render code; false until getServiceStatus() has resolved
+export function getCachedServiceStatus(): ServiceStatus {
+  return cachedStatus ?? NONE_CONFIGURED;
+}
+
+// Turns a proxy "not configured" response into a readable message
+export async function readProxyError(response: Response): Promise<string> {
+  try {
+    const data = await response.json();
+    if (data?.error) return `${response.status}: ${data.error}`;
+  } catch {
+    // Upstream returned a non-JSON body
+  }
+  return `${response.status} ${response.statusText}`;
+}

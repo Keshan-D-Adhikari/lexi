@@ -1,4 +1,5 @@
 import { PluginResult } from '../brain';
+import { getServiceStatus } from '../../utils/env';
 
 interface SearchResult {
   title: string;
@@ -16,12 +17,11 @@ interface SearchData {
 export const searchPlugin = {
   async execute(parameters: { query: string }): Promise<PluginResult> {
     try {
-      const apiKey = import.meta.env.VITE_SERPER_API_KEY;
-      if (!apiKey) {
+      if (!(await getServiceStatus()).search) {
         return {
           success: false,
           type: 'search',
-          summary: 'Web search service is not configured. Please add VITE_SERPER_API_KEY to your environment.',
+          summary: 'Web search service is not configured. Please add SERPER_API_KEY to the server environment.',
         };
       }
 
@@ -34,7 +34,7 @@ export const searchPlugin = {
         };
       }
 
-      const searchData = await this.fetchSearchData(query, apiKey);
+      const searchData = await this.fetchSearchData(query);
       
       if (!searchData || searchData.results.length === 0) {
         return {
@@ -62,12 +62,11 @@ export const searchPlugin = {
     }
   },
 
-  async fetchSearchData(query: string, apiKey: string): Promise<SearchData | null> {
+  async fetchSearchData(query: string): Promise<SearchData | null> {
     try {
-      const response = await fetch('https://google.serper.dev/search', {
+      const response = await fetch('/api/search/search', {
         method: 'POST',
         headers: {
-          'X-API-KEY': apiKey,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
